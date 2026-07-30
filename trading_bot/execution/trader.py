@@ -4,7 +4,7 @@ import time
 from typing import Any
 
 from trading_bot.data.fetcher import DataFetcher
-from trading_bot.execution.broker import AlpacaBroker, BaseBroker, PaperBroker
+from trading_bot.execution.broker import AlpacaBroker, BaseBroker, MoomooBroker, PaperBroker
 from trading_bot.features.indicators import add_all_indicators
 from trading_bot.logger import get_logger
 from trading_bot.ml.model import DirectionModel, load_or_train_model
@@ -16,11 +16,23 @@ logger = get_logger(__name__)
 
 def build_broker(config: dict[str, Any]) -> BaseBroker:
     broker_cfg = config["broker"]
-    if broker_cfg.get("mode") == "alpaca":
+    mode = broker_cfg.get("mode")
+
+    if mode == "alpaca":
         return AlpacaBroker(
             api_key=broker_cfg.get("alpaca_api_key"),
             secret_key=broker_cfg.get("alpaca_secret_key"),
             base_url=broker_cfg.get("alpaca_base_url"),
+        )
+    if mode == "moomoo":
+        moomoo_cfg = broker_cfg.get("moomoo", {})
+        return MoomooBroker(
+            host=moomoo_cfg.get("host", "127.0.0.1"),
+            port=moomoo_cfg.get("port", 11111),
+            trd_env=moomoo_cfg.get("trd_env", "SIMULATE"),
+            market=moomoo_cfg.get("market", "US"),
+            code_prefix=moomoo_cfg.get("code_prefix", "US."),
+            acc_id=moomoo_cfg.get("acc_id"),
         )
     return PaperBroker(
         starting_cash=config["backtest"]["starting_cash"],

@@ -52,8 +52,15 @@ options:
     stop_loss_pct: 0.50        # close at -50% premium loss
 
 broker:
-  mode: paper   # paper | alpaca  (alpaca requires ALPACA_API_KEY / ALPACA_SECRET_KEY env vars)
+  mode: paper   # paper | alpaca | moomoo  (alpaca requires ALPACA_API_KEY / ALPACA_SECRET_KEY env vars)
   account_file: "paper_account.json"
+  moomoo:
+    host: "127.0.0.1"
+    port: 11111
+    trd_env: "SIMULATE"   # SIMULATE | REAL — REAL requires manually clicking "Unlock Trade" in OpenD
+    market: "US"          # TrdMarket filter: US | HK | SH | SZ | SG | MY | JP
+    code_prefix: "US."    # prefix applied to plain tickers, e.g. AAPL -> US.AAPL
+    acc_id:                # optional: pin a specific moomoo account id; auto-resolved by trd_env if omitted
 
 trader:
   poll_interval_seconds: 3600  # how often the live/paper loop re-evaluates

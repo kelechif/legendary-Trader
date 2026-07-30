@@ -238,3 +238,100 @@ class AlpacaBroker(BaseBroker):
         )
         logger.warning("LIVE order submitted via Alpaca: %s %s %d", side, symbol, shares)
         return OrderResult(symbol, side, shares, price, timestamp, order.status)
+
+
+class MoomooBroker(BaseBroker):
+    """Broker adapter for moomoo/Futu's OpenAPI, via the official `moomoo-api`
+    Python SDK talking to a locally running OpenD gateway
+    (https://www.moomoo.com/download/OpenAPI).
+
+    OpenD — not this class — holds your login session, so no account
+    credentials ever pass through this code. Whether trades are simulated or
+    real is controlled entirely by `trd_env` (TrdEnv.SIMULATE / TrdEnv.REAL)
+    plus OpenD's own state.
+
+    SECURITY: moomoo does not support unlocking trading programmatically via
+    the SDK. For TrdEnv.REAL you must click "Unlock Trade" in the OpenD GUI
+    and enter your trade password there yourself — this class deliberately
+    never attempts to call an unlock method. Until you do that, place_order
+    calls against TrdEnv.REAL will be rejected by OpenD, which is the safe
+    default.
+
+    Symbols are expected in moomoo's `MARKET.CODE` format (e.g. "US.AAPL").
+    Plain tickers are auto-prefixed with `code_prefix` (default "US.");
+    futures/options use different code conventions on moomoo than the
+    Yahoo Finance tickers used elsewhere in this bot, so those aren't
+    auto-converted — pass the full moomoo code for those instruments.
+    """
+
+    def __init__(self, host: str = "127.0.0.1", port: int = 11111, trd_env: str = "SIMULATE",
+                 market: str = "US", code_prefix: str = "US.", acc_id: int | None = None):
+        try:
+            import moomoo as ft
+        except ImportError as exc:
+            raise ImportError(
+                "MoomooBroker requires the 'moomoo-api' package: pip install moomoo-api"
+            ) from exc
+
+        self._ft = ft
+        self.code_prefix = code_prefix
+        self.trd_env = ft.TrdEnv.REAL if trd_env.upper() == "REAL" else ft.TrdEnv.SIMULATE
+        self.trd_ctx = ft.OpenSecTradeContext(
+            host=host, port=port,
+            filter_trdmarket=getattr(ft.TrdMarket, market, ft.TrdMarket.NONE),
+        )
+        self.acc_id = acc_id if acc_id is not None else self._resolve_acc_id()
+
+    def _resolve_acc_id(self) -> int:
+        ret, data = self.trd_ctx.get_acc_list()
+        if ret != self._ft.RET_OK:
+            raise RuntimeError(f"moomoo get_acc_list failed: {data}")
+        matches = data[data["trd_env"] == self.trd_env]
+        if matches.empty:
+            raise RuntimeError(
+                f"No moomoo account found for trd_env={self.trd_env!r}. "
+                "Set broker.moomoo.acc_id in config.yaml to pin one explicitly."
+            )
+        return int(matches.iloc[0]["acc_id"])
+
+    def _to_moomoo_code(self, symbol: str) -> str:
+        return symbol if "." in symbol else f"{self.code_prefix}{symbol}"
+
+    def get_equity(self) -> float:
+        ret, data = self.trd_ctx.accinfo_query(trd_env=self.trd_env, acc_id=self.acc_id, refresh_cache=True)
+        if ret != self._ft.RET_OK:
+            raise RuntimeError(f"moomoo accinfo_query failed: {data}")
+        return float(data.iloc[0]["total_assets"])
+
+    def get_position(self, symbol: str) -> Position | None:
+        code = self._to_moomoo_code(symbol)
+        ret, data = self.trd_ctx.position_list_query(trd_env=self.trd_env, acc_id=self.acc_id, refresh_cache=True)
+        if ret != self._ft.RET_OK:
+            raise RuntimeError(f"moomoo position_list_query failed: {data}")
+        rows = data[data["code"] == code]
+        if rows.empty:
+            return None
+        row = rows.iloc[0]
+        return Position(symbol, int(float(row["qty"])), float(row["cost_price"]), 0.0, 0.0)
+
+    def submit_order(self, symbol: str, side: str, shares: int, price: float,
+                      stop_loss: float = 0.0, take_profit: float = 0.0) -> OrderResult:
+        ft = self._ft
+        code = self._to_moomoo_code(symbol)
+        trd_side = ft.TrdSide.BUY if side.upper() == "BUY" else ft.TrdSide.SELL
+        timestamp = datetime.now(timezone.utc).isoformat()
+
+        ret, data = self.trd_ctx.place_order(
+            trd_env=self.trd_env, trd_side=trd_side, order_type=ft.OrderType.NORMAL,
+            code=code, qty=shares, price=price, acc_id=self.acc_id,
+        )
+        if ret != ft.RET_OK:
+            logger.error("moomoo place_order failed for %s: %s", code, data)
+            return OrderResult(symbol, side, shares, price, timestamp, "rejected", str(data))
+
+        status = str(data.iloc[0]["order_status"]) if "order_status" in getattr(data, "columns", []) else "SUBMITTED"
+        logger.warning("moomoo order submitted (%s): %s %s %d @ %.2f", self.trd_env, side, code, shares, price)
+        return OrderResult(symbol, side, shares, price, timestamp, status)
+
+    def close(self) -> None:
+        self.trd_ctx.close()

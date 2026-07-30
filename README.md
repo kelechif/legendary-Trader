@@ -42,9 +42,9 @@ Data (Yahoo Finance)  →  Indicators/Features  →  ML direction model
   held-out (out-of-sample) data, applying the same signal + risk logic,
   and reports return, CAGR, Sharpe, max drawdown, and win rate.
 - **Execution**: `trading_bot/execution/` provides a `PaperBroker` (simulated
-  fills, persisted to a local JSON file) and an optional `AlpacaBroker` for
-  live/paper trading through Alpaca, plus a `TradingBot` loop that ties
-  everything together.
+  fills, persisted to a local JSON file), an optional `AlpacaBroker`, and an
+  optional `MoomooBroker` for live/paper trading, plus a `TradingBot` loop
+  that ties everything together.
 - **Options**: `trading_bot/options/` turns the same directional signal into
   a long-calls/long-puts trade: `chain.py` fetches the live Yahoo Finance
   option chain, `pricing.py` is a from-scratch Black-Scholes pricer/Greeks
@@ -138,6 +138,41 @@ ALPACA_BASE_URL=https://paper-api.alpaca.markets   # or the live endpoint
 This requires `pip install alpaca-trade-api`. Start with Alpaca's own paper
 endpoint before ever pointing this at a live account.
 
+To trade through [moomoo](https://www.moomoo.com/), set `broker.mode: moomoo`
+in `config.yaml`:
+
+```bash
+pip install moomoo-api
+```
+
+1. Download and run **OpenD** (moomoo's local gateway app) from
+   https://www.moomoo.com/download/OpenAPI, and log into your moomoo account
+   there. Credentials live in OpenD, not in this repo or your config file.
+2. Leave `broker.moomoo.trd_env: SIMULATE` (the default) for paper trading —
+   no further setup needed. To go live, set it to `REAL` **and** click
+   "Unlock Trade" in the OpenD GUI yourself; this bot deliberately never
+   attempts to unlock trading programmatically.
+3. Symbols are auto-prefixed with `broker.moomoo.code_prefix` (default
+   `"US."`, so `AAPL` → `US.AAPL`). Futures/options use different code
+   conventions on moomoo than the Yahoo tickers used elsewhere in this repo,
+   so pass full moomoo codes for those.
+
+`MoomooBroker` covers equity/futures trading only (same scope as
+`AlpacaBroker`) — options trading stays paper-only via `PaperBroker`
+regardless of `broker.mode`.
+
+### Dashboard
+
+```bash
+streamlit run dashboard.py
+```
+
+A read-only-by-default view over the same engine: current signals for your
+watchlist, the paper account (cash, positions, option positions, recent
+trades), and both backtest types with an equity-curve chart. Viewing signals
+never places an order — that only happens if you click "Execute paper trades
+on these signals" explicitly.
+
 ## Configuration
 
 All defaults — the watchlist, data window, model hyperparameters, risk
@@ -163,7 +198,7 @@ trading_bot/
   strategy/signals.py      # ML + technical-filter signal generator
   strategy/risk.py         # ATR-based position sizing and risk limits
   backtest/engine.py       # walk-forward backtester + performance metrics
-  execution/broker.py      # PaperBroker (default) + optional AlpacaBroker
+  execution/broker.py      # PaperBroker (default) + optional AlpacaBroker/MoomooBroker
   execution/trader.py      # ties data -> model -> signal -> risk -> broker (equity/futures)
   execution/options_trader.py  # same, for options (long calls/puts)
   options/chain.py          # live option-chain fetch (Yahoo Finance)
@@ -172,5 +207,6 @@ trading_bot/
   options/risk.py           # premium-at-risk position sizing
   options/backtest.py       # synthetic Black-Scholes walk-forward backtest
 main.py                    # CLI: backtest / train / trade / options-chain / options-backtest / options-trade
+dashboard.py                 # Streamlit dashboard (signals, paper account, both backtests)
 config.yaml                 # watchlist, model, risk, options, and broker settings
 ```
