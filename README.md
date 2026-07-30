@@ -2,8 +2,8 @@
 
 A simple, structured trading bot that combines technical data analysis, a
 machine-learning direction model, and risk-managed automated strategies for
-**stocks and futures**. It's built to help you research and run ideas
-consistently — not to guarantee profits.
+**stocks, futures, and options**. It's built to help you research and run
+ideas consistently — not to guarantee profits.
 
 > **Disclaimer:** This is an educational project, not financial advice. Markets
 > are risky and models can be wrong. The bot defaults to **paper trading**
@@ -45,6 +45,13 @@ Data (Yahoo Finance)  →  Indicators/Features  →  ML direction model
   fills, persisted to a local JSON file) and an optional `AlpacaBroker` for
   live/paper trading through Alpaca, plus a `TradingBot` loop that ties
   everything together.
+- **Options**: `trading_bot/options/` turns the same directional signal into
+  a long-calls/long-puts trade: `chain.py` fetches the live Yahoo Finance
+  option chain, `pricing.py` is a from-scratch Black-Scholes pricer/Greeks
+  calculator, `selector.py` picks the contract closest to a target delta,
+  and `risk.py` sizes contracts by premium-at-risk. `OptionsTradingBot`
+  (`execution/options_trader.py`) runs the paper-trading loop, sharing the
+  same `PaperBroker` account (and cash) as the equity bot.
 
 ## Setup
 
@@ -85,6 +92,36 @@ python main.py trade --watchlist
 Each cycle: fetch latest data → indicators → ML prediction → signal →
 risk-managed size → paper order. State (cash, open positions, trade log) is
 persisted to `paper_account.json`.
+
+### 4. Options: chain lookup, backtest, and paper trading
+
+```bash
+# Explore the live chain (10 strikes nearest the money, both sides)
+python main.py options-chain --symbol AAPL
+
+# Synthetic backtest of a long-calls/long-puts strategy driven by the same ML signal
+python main.py options-backtest --symbol AAPL --period 2y
+
+# Paper-trade options for specific symbols (or the whole watchlist)
+python main.py options-trade --symbol AAPL --once
+```
+
+The strategy is intentionally simple and directional: a bullish signal buys a
+call, a bearish signal buys a put, sized so the maximum loss (the premium
+paid) stays within your configured risk budget — no spreads, no selling
+premium, no assignment risk.
+
+**Backtest limitation:** free historical options-chain data (real strikes,
+quotes, and implied-vol history) doesn't exist anywhere, so
+`options-backtest` prices synthetic contracts with Black-Scholes off the
+underlying's trailing realized volatility as an IV proxy. Treat the results
+as a read on the signal's directional quality expressed through options, not
+a faithful replay of what a real options book would have done. Live/paper
+trading (`options-trade`) uses real, current option-chain quotes from Yahoo
+Finance — only the backtest is synthetic.
+
+Options trading is currently **paper-only** (no live options broker is
+wired up); `broker.mode: alpaca` only applies to the equity/futures bot.
 
 ### Going live (optional, off by default)
 
@@ -127,7 +164,13 @@ trading_bot/
   strategy/risk.py         # ATR-based position sizing and risk limits
   backtest/engine.py       # walk-forward backtester + performance metrics
   execution/broker.py      # PaperBroker (default) + optional AlpacaBroker
-  execution/trader.py      # ties data -> model -> signal -> risk -> broker
-main.py                    # CLI: backtest / train / trade
-config.yaml                 # watchlist, model, risk, and broker settings
+  execution/trader.py      # ties data -> model -> signal -> risk -> broker (equity/futures)
+  execution/options_trader.py  # same, for options (long calls/puts)
+  options/chain.py          # live option-chain fetch (Yahoo Finance)
+  options/pricing.py        # Black-Scholes pricing + Greeks
+  options/selector.py       # delta-based contract selection
+  options/risk.py           # premium-at-risk position sizing
+  options/backtest.py       # synthetic Black-Scholes walk-forward backtest
+main.py                    # CLI: backtest / train / trade / options-chain / options-backtest / options-trade
+config.yaml                 # watchlist, model, risk, options, and broker settings
 ```

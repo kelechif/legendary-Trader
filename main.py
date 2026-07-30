@@ -7,6 +7,9 @@ Examples:
     python main.py train --symbol MSFT
     python main.py trade --symbol AAPL MSFT ES=F --once
     python main.py trade --watchlist
+    python main.py options-chain --symbol AAPL
+    python main.py options-backtest --symbol AAPL --period 2y
+    python main.py options-trade --symbol AAPL --once
 """
 from __future__ import annotations
 
@@ -16,9 +19,13 @@ import sys
 from trading_bot.backtest.engine import BacktestEngine
 from trading_bot.config import load_config
 from trading_bot.data.fetcher import DataFetcher
+from trading_bot.execution.options_trader import OptionsTradingBot
 from trading_bot.execution.trader import TradingBot
 from trading_bot.logger import get_logger
 from trading_bot.ml.model import DirectionModel
+from trading_bot.options.backtest import SyntheticOptionsBacktester
+from trading_bot.options.chain import OptionsChainFetcher
+from trading_bot.options.risk import OptionsRiskManager, OptionsRiskParams
 from trading_bot.strategy.risk import RiskManager, RiskParams
 from trading_bot.strategy.signals import SignalGenerator
 
@@ -30,12 +37,9 @@ def _watchlist_symbols(config: dict) -> list[str]:
     return list(wl.get("stocks", [])) + list(wl.get("futures", []))
 
 
-def cmd_backtest(args: argparse.Namespace, config: dict) -> None:
-    fetcher = DataFetcher()
-    raw_df = fetcher.fetch(args.symbol, period=args.period, interval=config["data"]["interval"])
-
+def _build_model(config: dict) -> DirectionModel:
     model_cfg = config["model"]
-    model = DirectionModel(
+    return DirectionModel(
         model_type=model_cfg["type"],
         n_estimators=model_cfg["n_estimators"],
         max_depth=model_cfg["max_depth"],
@@ -43,7 +47,14 @@ def cmd_backtest(args: argparse.Namespace, config: dict) -> None:
         up_threshold_pct=model_cfg["up_threshold_pct"],
         train_test_split=model_cfg["train_test_split"],
     )
-    signal_generator = SignalGenerator(min_probability=model_cfg["min_probability"])
+
+
+def cmd_backtest(args: argparse.Namespace, config: dict) -> None:
+    fetcher = DataFetcher()
+    raw_df = fetcher.fetch(args.symbol, period=args.period, interval=config["data"]["interval"])
+
+    model = _build_model(config)
+    signal_generator = SignalGenerator(min_probability=config["model"]["min_probability"])
     risk_manager = RiskManager(RiskParams(**config["risk"]))
 
     engine = BacktestEngine(
@@ -68,15 +79,7 @@ def cmd_train(args: argparse.Namespace, config: dict) -> None:
     fetcher = DataFetcher()
     raw_df = fetcher.fetch(args.symbol, period=config["data"]["history_period"], interval=config["data"]["interval"])
 
-    model_cfg = config["model"]
-    model = DirectionModel(
-        model_type=model_cfg["type"],
-        n_estimators=model_cfg["n_estimators"],
-        max_depth=model_cfg["max_depth"],
-        lookahead_bars=model_cfg["lookahead_bars"],
-        up_threshold_pct=model_cfg["up_threshold_pct"],
-        train_test_split=model_cfg["train_test_split"],
-    )
+    model = _build_model(config)
     result = model.train(raw_df)
     model.save(args.symbol)
 
@@ -84,6 +87,67 @@ def cmd_train(args: argparse.Namespace, config: dict) -> None:
     print(f"  train accuracy : {result.train_accuracy:.3f} (n={result.n_train})")
     print(f"  test accuracy  : {result.test_accuracy:.3f} (n={result.n_test})")
     print(f"  test precision : {result.test_precision:.3f}")
+
+
+def cmd_options_chain(args: argparse.Namespace, config: dict) -> None:
+    opts_cfg = config["options"]
+    chain_fetcher = OptionsChainFetcher()
+    expiration = args.expiration or chain_fetcher.nearest_expiration(args.symbol, opts_cfg["target_dte_days"])
+    calls, puts = chain_fetcher.fetch_chain(args.symbol, expiration)
+
+    fetcher = DataFetcher()
+    spot = float(fetcher.fetch(args.symbol, period="5d", interval="1d")["close"].iloc[-1])
+
+    cols = ["contractSymbol", "strike", "bid", "ask", "lastPrice", "impliedVolatility", "volume", "openInterest"]
+    print(f"\n===== {args.symbol} options chain @ {expiration} (spot={spot:.2f}) =====")
+    for label, df in (("CALLS", calls), ("PUTS", puts)):
+        near = df.iloc[(df["strike"] - spot).abs().argsort()[:10]].sort_values("strike")
+        print(f"\n{label}:")
+        print(near[cols].to_string(index=False))
+
+
+def cmd_options_backtest(args: argparse.Namespace, config: dict) -> None:
+    fetcher = DataFetcher()
+    raw_df = fetcher.fetch(args.symbol, period=args.period, interval=config["data"]["interval"])
+    opts_cfg = config["options"]
+
+    model = _build_model(config)
+    signal_generator = SignalGenerator(min_probability=config["model"]["min_probability"])
+    risk_manager = OptionsRiskManager(OptionsRiskParams(**opts_cfg["risk"]))
+
+    engine = SyntheticOptionsBacktester(
+        starting_cash=config["backtest"]["starting_cash"],
+        dte_days=opts_cfg["target_dte_days"],
+        otm_pct=opts_cfg["otm_pct"],
+        risk_free_rate=opts_cfg["risk_free_rate"],
+        iv_lookback=opts_cfg["iv_lookback"],
+    )
+    result = engine.run(raw_df, model, signal_generator, risk_manager)
+
+    print(f"\n===== Options backtest (synthetic, Black-Scholes): {args.symbol} ({args.period}) =====")
+    print("NOTE: no free historical options-chain data exists, so contracts are priced")
+    print("theoretically off realized volatility. Read this as signal quality, not a")
+    print("faithful replay of a real options book.\n")
+    for field_name, value in vars(result.metrics).items():
+        print(f"  {field_name:28s}: {value}")
+    print(f"  trades executed             : {len(result.trades)}")
+
+
+def cmd_options_trade(args: argparse.Namespace, config: dict) -> None:
+    symbols = args.symbol if args.symbol else _watchlist_symbols(config)
+    bot = OptionsTradingBot(config)
+
+    print("Broker mode: paper (options trading is paper-only)")
+    print(f"Symbols: {symbols}")
+
+    if args.once:
+        results = bot.run_once(symbols)
+        for r in results:
+            print(f"{r['symbol']:8s} price={r['price']:.2f} "
+                  f"prob_up={r['prediction']['probability_up']:.2f} "
+                  f"intent={r['intent'].right or 'HOLD'} ({r['intent'].reason})")
+    else:
+        bot.run_loop(symbols, poll_interval_seconds=args.interval)
 
 
 def cmd_trade(args: argparse.Namespace, config: dict) -> None:
@@ -124,6 +188,22 @@ def build_parser() -> argparse.ArgumentParser:
     p_trade.add_argument("--once", action="store_true", help="Run a single evaluation cycle and exit")
     p_trade.add_argument("--interval", type=int, default=None, help="Seconds between cycles in loop mode")
     p_trade.set_defaults(func=cmd_trade)
+
+    p_opt_chain = sub.add_parser("options-chain", help="Show the live option chain for a symbol")
+    p_opt_chain.add_argument("--symbol", required=True)
+    p_opt_chain.add_argument("--expiration", default=None, help="YYYY-MM-DD (default: nearest to config target DTE)")
+    p_opt_chain.set_defaults(func=cmd_options_chain)
+
+    p_opt_bt = sub.add_parser("options-backtest", help="Synthetic Black-Scholes options-strategy backtest")
+    p_opt_bt.add_argument("--symbol", required=True)
+    p_opt_bt.add_argument("--period", default="2y")
+    p_opt_bt.set_defaults(func=cmd_options_backtest)
+
+    p_opt_trade = sub.add_parser("options-trade", help="Run the automated (paper) options trading loop")
+    p_opt_trade.add_argument("--symbol", nargs="*", help="Symbols to trade (default: config watchlist)")
+    p_opt_trade.add_argument("--once", action="store_true", help="Run a single evaluation cycle and exit")
+    p_opt_trade.add_argument("--interval", type=int, default=None, help="Seconds between cycles in loop mode")
+    p_opt_trade.set_defaults(func=cmd_options_trade)
 
     return parser
 

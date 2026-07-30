@@ -159,3 +159,22 @@ class DirectionModel:
     @staticmethod
     def _safe_name(symbol: str) -> str:
         return symbol.replace("=", "_").replace("^", "").replace("/", "_")
+
+
+def load_or_train_model(symbol: str, raw_df: pd.DataFrame, model_cfg: dict) -> "DirectionModel":
+    """Load a cached model for `symbol`, training and persisting a new one if
+    none exists yet. Shared by the equity and options trading loops."""
+    try:
+        return DirectionModel.load(symbol)
+    except FileNotFoundError:
+        model = DirectionModel(
+            model_type=model_cfg["type"],
+            n_estimators=model_cfg["n_estimators"],
+            max_depth=model_cfg["max_depth"],
+            lookahead_bars=model_cfg["lookahead_bars"],
+            up_threshold_pct=model_cfg["up_threshold_pct"],
+            train_test_split=model_cfg["train_test_split"],
+        )
+        model.train(raw_df)
+        model.save(symbol)
+        return model

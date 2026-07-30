@@ -43,6 +43,42 @@ class _OpenPosition:
     entry_date: object
 
 
+def compute_performance_metrics(
+    equity_curve: pd.DataFrame, trades: pd.DataFrame, starting_cash: float,
+    annualization_factor: int = 252,
+) -> BacktestMetrics:
+    """Shared equity-curve -> performance-metrics calculation, reused by both
+    the equity and the synthetic options backtest engines."""
+    equity = equity_curve["equity"]
+    final_equity = float(equity.iloc[-1])
+    total_return = final_equity / starting_cash - 1
+
+    n_bars = len(equity)
+    years = max(n_bars / annualization_factor, 1e-9)
+    cagr = (final_equity / starting_cash) ** (1 / years) - 1 if final_equity > 0 else -1.0
+
+    daily_returns = equity.pct_change().dropna()
+    vol = daily_returns.std() * np.sqrt(annualization_factor) if len(daily_returns) else 0.0
+    sharpe = (daily_returns.mean() * annualization_factor) / vol if vol > 1e-12 else 0.0
+
+    running_max = equity.cummax()
+    drawdown = (equity - running_max) / running_max
+    max_drawdown = float(drawdown.min()) if len(drawdown) else 0.0
+
+    win_rate = float((trades["pnl"] > 0).mean()) if len(trades) else 0.0
+
+    return BacktestMetrics(
+        total_return_pct=round(total_return * 100, 2),
+        cagr_pct=round(cagr * 100, 2),
+        annualized_volatility_pct=round(vol * 100, 2),
+        sharpe_ratio=round(float(sharpe), 2),
+        max_drawdown_pct=round(max_drawdown * 100, 2),
+        win_rate_pct=round(win_rate * 100, 2),
+        num_trades=len(trades),
+        final_equity=round(final_equity, 2),
+    )
+
+
 class BacktestEngine:
     """Walk-forward, long-only backtest: train the model on the first slice of
     history, then simulate the ML+risk strategy bar-by-bar on the held-out slice.
@@ -163,38 +199,8 @@ class BacktestEngine:
         )
 
     def _compute_metrics(self, equity_curve: pd.DataFrame, trades: pd.DataFrame) -> BacktestMetrics:
-        equity = equity_curve["equity"]
-        final_equity = float(equity.iloc[-1])
-        total_return = final_equity / self.starting_cash - 1
-
-        n_bars = len(equity)
-        years = max(n_bars / self.annualization_factor, 1e-9)
-        cagr = (final_equity / self.starting_cash) ** (1 / years) - 1 if final_equity > 0 else -1.0
-
-        daily_returns = equity.pct_change().dropna()
-        vol = daily_returns.std() * np.sqrt(self.annualization_factor) if len(daily_returns) else 0.0
-        sharpe = (
-            (daily_returns.mean() * self.annualization_factor) / vol if vol > 1e-12 else 0.0
-        )
-
-        running_max = equity.cummax()
-        drawdown = (equity - running_max) / running_max
-        max_drawdown = float(drawdown.min()) if len(drawdown) else 0.0
-
-        if len(trades):
-            win_rate = float((trades["pnl"] > 0).mean())
-        else:
-            win_rate = 0.0
-
-        return BacktestMetrics(
-            total_return_pct=round(total_return * 100, 2),
-            cagr_pct=round(cagr * 100, 2),
-            annualized_volatility_pct=round(vol * 100, 2),
-            sharpe_ratio=round(float(sharpe), 2),
-            max_drawdown_pct=round(max_drawdown * 100, 2),
-            win_rate_pct=round(win_rate * 100, 2),
-            num_trades=len(trades),
-            final_equity=round(final_equity, 2),
+        return compute_performance_metrics(
+            equity_curve, trades, self.starting_cash, self.annualization_factor
         )
 
     @staticmethod

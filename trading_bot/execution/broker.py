@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from abc import ABC, abstractmethod
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -31,6 +31,29 @@ class OrderResult:
     reason: str = ""
 
 
+@dataclass
+class OptionPosition:
+    contract_symbol: str
+    underlying: str
+    right: str  # "call" | "put"
+    strike: float
+    expiration: str
+    contracts: int
+    entry_premium: float
+
+
+@dataclass
+class OptionOrderResult:
+    contract_symbol: str
+    underlying: str
+    side: str  # "BUY_TO_OPEN" | "SELL_TO_CLOSE"
+    contracts: int
+    premium: float
+    timestamp: str
+    status: str
+    reason: str = ""
+
+
 class BaseBroker(ABC):
     @abstractmethod
     def get_equity(self) -> float: ...
@@ -54,6 +77,8 @@ class PaperBroker(BaseBroker):
         self.cash = starting_cash
         self.positions: dict[str, Position] = {}
         self.trade_log: list[dict] = []
+        self.option_positions: dict[str, OptionPosition] = {}
+        self.option_trade_log: list[dict] = []
         self._load()
 
     def _load(self) -> None:
@@ -63,25 +88,85 @@ class PaperBroker(BaseBroker):
         self.cash = data["cash"]
         self.positions = {s: Position(**p) for s, p in data["positions"].items()}
         self.trade_log = data["trade_log"]
+        self.option_positions = {
+            s: OptionPosition(**p) for s, p in data.get("option_positions", {}).items()
+        }
+        self.option_trade_log = data.get("option_trade_log", [])
 
     def _save(self) -> None:
         payload = {
             "cash": self.cash,
             "positions": {s: asdict(p) for s, p in self.positions.items()},
             "trade_log": self.trade_log,
+            "option_positions": {s: asdict(p) for s, p in self.option_positions.items()},
+            "option_trade_log": self.option_trade_log,
         }
         self.account_file.write_text(json.dumps(payload, indent=2))
 
-    def get_equity(self, mark_prices: dict[str, float] | None = None) -> float:
+    def get_equity(self, mark_prices: dict[str, float] | None = None,
+                    option_mark_premiums: dict[str, float] | None = None) -> float:
         equity = self.cash
         mark_prices = mark_prices or {}
         for symbol, pos in self.positions.items():
             price = mark_prices.get(symbol, pos.entry_price)
             equity += pos.shares * price
+
+        option_mark_premiums = option_mark_premiums or {}
+        for contract_symbol, pos in self.option_positions.items():
+            premium = option_mark_premiums.get(contract_symbol, pos.entry_premium)
+            equity += pos.contracts * premium * 100
         return equity
 
     def get_position(self, symbol: str) -> Position | None:
         return self.positions.get(symbol)
+
+    def get_option_position(self, contract_symbol: str) -> OptionPosition | None:
+        return self.option_positions.get(contract_symbol)
+
+    def find_option_position_for_underlying(self, underlying: str) -> OptionPosition | None:
+        for pos in self.option_positions.values():
+            if pos.underlying == underlying:
+                return pos
+        return None
+
+    def submit_option_order(self, contract_symbol: str, underlying: str, right: str, strike: float,
+                             expiration: str, contracts: int, premium: float, side: str) -> OptionOrderResult:
+        timestamp = datetime.now(timezone.utc).isoformat()
+
+        if contracts <= 0:
+            return OptionOrderResult(contract_symbol, underlying, side, contracts, premium, timestamp,
+                                      "rejected", "non-positive contract count")
+
+        if side.upper() == "BUY_TO_OPEN":
+            cost = contracts * premium * 100
+            if cost > self.cash:
+                return OptionOrderResult(contract_symbol, underlying, side, contracts, premium, timestamp,
+                                          "rejected", "insufficient cash")
+            self.cash -= cost
+            self.option_positions[contract_symbol] = OptionPosition(
+                contract_symbol, underlying, right, strike, expiration, contracts, premium
+            )
+            status, reason = "filled", ""
+        elif side.upper() == "SELL_TO_CLOSE":
+            pos = self.option_positions.get(contract_symbol)
+            if pos is None or pos.contracts < contracts:
+                return OptionOrderResult(contract_symbol, underlying, side, contracts, premium, timestamp,
+                                          "rejected", "no matching position")
+            self.cash += contracts * premium * 100
+            if pos.contracts == contracts:
+                del self.option_positions[contract_symbol]
+            else:
+                pos.contracts -= contracts
+            status, reason = "filled", ""
+        else:
+            return OptionOrderResult(contract_symbol, underlying, side, contracts, premium, timestamp,
+                                      "rejected", f"unknown side {side}")
+
+        result = OptionOrderResult(contract_symbol, underlying, side, contracts, premium, timestamp, status, reason)
+        self.option_trade_log.append(asdict(result))
+        self._save()
+        logger.info("Paper option order filled: %s %s %s x%d @ %.2f", side, contract_symbol, right, contracts, premium)
+        return result
 
     def submit_order(self, symbol: str, side: str, shares: int, price: float,
                       stop_loss: float = 0.0, take_profit: float = 0.0) -> OrderResult:

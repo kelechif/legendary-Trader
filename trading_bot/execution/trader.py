@@ -7,7 +7,7 @@ from trading_bot.data.fetcher import DataFetcher
 from trading_bot.execution.broker import AlpacaBroker, BaseBroker, PaperBroker
 from trading_bot.features.indicators import add_all_indicators
 from trading_bot.logger import get_logger
-from trading_bot.ml.model import DirectionModel
+from trading_bot.ml.model import DirectionModel, load_or_train_model
 from trading_bot.strategy.risk import RiskManager, RiskParams
 from trading_bot.strategy.signals import Signal, SignalGenerator
 
@@ -45,25 +45,9 @@ class TradingBot:
         self._models: dict[str, DirectionModel] = {}
 
     def _get_model(self, symbol: str, raw_df) -> DirectionModel:
-        if symbol in self._models:
-            return self._models[symbol]
-        try:
-            model = DirectionModel.load(symbol)
-            logger.info("Loaded cached model for %s", symbol)
-        except FileNotFoundError:
-            model_cfg = self.config["model"]
-            model = DirectionModel(
-                model_type=model_cfg["type"],
-                n_estimators=model_cfg["n_estimators"],
-                max_depth=model_cfg["max_depth"],
-                lookahead_bars=model_cfg["lookahead_bars"],
-                up_threshold_pct=model_cfg["up_threshold_pct"],
-                train_test_split=model_cfg["train_test_split"],
-            )
-            model.train(raw_df)
-            model.save(symbol)
-        self._models[symbol] = model
-        return model
+        if symbol not in self._models:
+            self._models[symbol] = load_or_train_model(symbol, raw_df, self.config["model"])
+        return self._models[symbol]
 
     def evaluate_symbol(self, symbol: str) -> dict[str, Any]:
         data_cfg = self.config["data"]
