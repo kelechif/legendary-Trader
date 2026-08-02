@@ -1,0 +1,66 @@
+# legendary-Trader default configuration
+# All symbols use Yahoo Finance tickers. Futures use the "=F" continuous-contract
+# suffix (e.g. ES=F is the S&P 500 e-mini, CL=F is WTI crude, GC=F is gold).
+
+watchlist:
+  stocks:
+    - AAPL
+    - MSFT
+    - SPY
+  futures:
+    - ES=F   # S&P 500 e-mini
+    - CL=F   # crude oil
+    - GC=F   # gold
+
+data:
+  interval: "1d"     # bar size: 1d, 1h, etc. (subject to Yahoo Finance limits)
+  history_period: "2y"  # how much history to pull for training/backtesting
+
+model:
+  type: random_forest       # random_forest | gradient_boosting
+  n_estimators: 300
+  max_depth: 6
+  lookahead_bars: 1         # predict direction N bars ahead
+  up_threshold_pct: 0.0     # label 1 (up) if forward return > this
+  train_test_split: 0.8     # chronological split, no shuffling
+  min_probability: 0.55     # minimum model confidence to act on a signal
+
+risk:
+  risk_per_trade_pct: 0.01     # fraction of equity risked per trade
+  stop_loss_atr_mult: 2.0
+  take_profit_atr_mult: 3.0
+  max_position_pct: 0.25       # max fraction of equity in a single position
+  max_open_positions: 5
+  daily_loss_limit_pct: 0.03   # halt new trades after this daily drawdown
+
+backtest:
+  starting_cash: 100000
+  commission_per_share: 0.0
+  slippage_pct: 0.0005
+
+options:
+  risk_free_rate: 0.04         # used for Black-Scholes pricing/Greeks
+  target_dte_days: 30          # preferred days-to-expiration when selecting a contract
+  target_delta_call: 0.60      # target delta magnitude for long calls
+  target_delta_put: 0.60       # target delta magnitude for long puts (applied as -0.60)
+  otm_pct: 0.0                 # backtest-only: strike offset from spot (0 = ATM)
+  iv_lookback: 20              # trading days of realized vol used as an IV proxy in backtests
+  risk:
+    risk_per_trade_pct: 0.01   # fraction of equity risked per contract-position (= premium paid)
+    max_position_pct: 0.10     # max fraction of equity in a single options position
+    take_profit_pct: 0.75      # close at +75% premium gain
+    stop_loss_pct: 0.50        # close at -50% premium loss
+
+broker:
+  mode: paper   # paper | alpaca | moomoo  (alpaca requires ALPACA_API_KEY / ALPACA_SECRET_KEY env vars)
+  account_file: "paper_account.json"
+  moomoo:
+    host: "127.0.0.1"
+    port: 11111
+    trd_env: "SIMULATE"   # SIMULATE | REAL — REAL requires manually clicking "Unlock Trade" in OpenD
+    market: "US"          # TrdMarket filter: US | HK | SH | SZ | SG | MY | JP
+    code_prefix: "US."    # prefix applied to plain tickers, e.g. AAPL -> US.AAPL
+    acc_id:                # optional: pin a specific moomoo account id; auto-resolved by trd_env if omitted
+
+trader:
+  poll_interval_seconds: 3600  # how often the live/paper loop re-evaluates

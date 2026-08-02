@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+*.egg-info/
+build/
+dist/
+
+# runtime artifacts
+models/*.joblib
+logs/*.log
+data_cache/
+paper_account.json
+trade_log.csv
+equity_curve.png
