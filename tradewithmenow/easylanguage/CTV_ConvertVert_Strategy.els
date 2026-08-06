@@ -1,0 +1,94 @@
+{
+  CTV Convert The Vert — wired to TWMN CTV indicators via GlobalSignals
+  GlobalSignal(5)  = TWMN bridge gate (CTV_TWMN_Bridge)
+  GlobalSignal(10) = Regime gate (CTV_0DTE_RegimeGate)
+  GlobalSignal(11) = Shift direction
+
+  SIM logging -> logs/ts_print.csv -> python ingest_ts_log.py
+}
+
+inputs:
+    MaxRiskPct(0.75),
+    MaxDailyLossPct(2.0),
+    MaxTicketsPerDay(3),
+    AutoExpire(true),
+    SafeMode(true),
+    UseRegimeGate(true),
+    UseTWMNBridge(true),
+    LogPath("C:\Users\kelec\OneDrive\Documents\TradeWithMeNow\logs\ts_print.csv");
+
+variables:
+    GateOpen(false),
+    ShiftDir(0),
+    TicketsToday(0),
+    DailyPnLPct(0),
+    InPosition(false),
+    VertSold(false),
+    Converted(false),
+    StopTrading(false),
+    TWMNGate(false),
+    RegimeGate(false);
+
+if Date <> Date[1] then begin
+    TicketsToday = 0;
+    DailyPnLPct = 0;
+    StopTrading = False;
+end;
+
+if DailyPnLPct <= -MaxDailyLossPct then
+    StopTrading = True;
+
+if UseTWMNBridge then
+    TWMNGate = GlobalSignal(5) = 1
+else
+    TWMNGate = True;
+
+if UseRegimeGate then
+    RegimeGate = GlobalSignal(10) = 1
+else
+    RegimeGate = True;
+
+ShiftDir = GlobalSignal(11);
+if ShiftDir = 0 then
+    ShiftDir = GlobalSignal(1);
+
+GateOpen = not StopTrading and TicketsToday < MaxTicketsPerDay and TWMNGate and RegimeGate;
+
+if GateOpen and not InPosition and ShiftDir <> 0 then begin
+    Print(File(LogPath),
+        DateString, ",", TimeString, ",SIM_ENTRY,",
+        GetSymbolName, ",", ShiftDir, ",", MaxRiskPct, ",TWMN");
+    if not SafeMode then begin
+        if ShiftDir = 1 then
+            Sell ("CTV_PutVert") next bar at market
+        else
+            Sell ("CTV_CallVert") next bar at market;
+    end;
+    TicketsToday = TicketsToday + 1;
+    InPosition = True;
+    VertSold = True;
+    Converted = False;
+end;
+
+if InPosition and VertSold and not Converted then begin
+    if GlobalSignal(5) = 1 and AbsValue(Close - Close[3]) > AvgTrueRange(14) * 0.5 then begin
+        Print(File(LogPath),
+            DateString, ",", TimeString, ",SIM_CONVERT,",
+            GetSymbolName, ",", ShiftDir, ",0,TWMN");
+        if not SafeMode then
+            Buy ("CTV_Convert") next bar at market;
+        Converted = True;
+    end;
+end;
+
+if Time >= 1600 and InPosition then begin
+    Print(File(LogPath),
+        DateString, ",", TimeString, ",SESSION_END,",
+        GetSymbolName, ",", ShiftDir, ",0,TWMN");
+    InPosition = False;
+    VertSold = False;
+    Converted = False;
+end;
+
+if StopTrading and TicketsToday = 0 then
+    Print(File(LogPath), DateString, ",", TimeString, ",HALT,,,0,daily_loss");

@@ -1,0 +1,35 @@
+# 0DTE risk defaults
+risk:
+  max_risk_per_trade_pct: 0.75
+  max_daily_loss_pct: 2.0
+  max_tickets_per_day: 3
+  max_concurrent_positions: 2
+  drawdown_halt_pct: 8.0
+  min_account_for_spx: 25000
+  use_xsp_below_min: true
+
+underlying:
+  primary: "@SPX"
+  small_account: "@XSP"
+
+structure:
+  spread_width: 10
+  short_delta_target: 0.12
+  credit_min: 0.40
+  convert_on_shift: true
+  auto_expire: true
+
+regime:
+  vix_max: 28
+  require_spxd_align: true
+  skip_event_days: true
+
+execution:
+  broker: tradestation
+  env: SIMULATE
+  safe_mode: true
+
+paths:
+  kill_switch: data/STOP_TRADING
+  trade_log: data/trades.csv
+  ts_print_log: logs/ts_print.csv

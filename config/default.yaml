@@ -1,0 +1,50 @@
+assets:
+  - BTC-USD
+  - ETH-USD
+  - LTC-USD
+
+port: 8080
+initial_equity: 10000.0
+engine_interval_sec: 2
+ws_reconnect_delay_sec: 3
+
+price_history_limit: 500
+candle_history_limit: 300
+trade_history_limit: 200
+equity_history_limit: 500
+
+candle_timeframes:
+  - 1m
+  - 5m
+  - 15m
+  - 1h
+
+order_book_depth: 10
+
+alerts:
+  enabled: true
+  sound: true
+  popup: true
+  flash: true
+  drawdown_threshold_pct: 5.0
+
+logging:
+  level: INFO
+  file: logs/platform.log
+  max_bytes: 1048576
+  backup_count: 3
+
+metrics:
+  enabled: true
+
+strategies:
+  Momentum:
+    lookback: 20
+    threshold: 0.002
+  Breakout:
+    lookback: 30
+    buffer: 0.0015
+  MACD:
+    fast: 12
+    slow: 26
+    signal: 9

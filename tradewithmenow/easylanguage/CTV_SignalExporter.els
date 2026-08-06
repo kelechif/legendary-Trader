@@ -1,0 +1,32 @@
+{
+  CTV Signal Exporter — logs gate + TWMN state changes for Python ingest
+}
+
+inputs:
+    LogPath("C:\Users\kelec\OneDrive\Documents\TradeWithMeNow\logs\ts_print.csv"),
+    ExportEveryBar(false);
+
+variables:
+    PrevGate(false),
+    GateOpen(false),
+    ShiftDir(0),
+    TODActive(false),
+    LineText("");
+
+GateOpen = GlobalSignal(10) = 1;
+ShiftDir = GlobalSignal(11);
+TODActive = GlobalSignal(2) = 1;
+
+if GateOpen <> PrevGate or ExportEveryBar then begin
+    LineText =
+        NumToStr(Date, 0) + "," +
+        NumToStr(Time, 0) + "," +
+        GetSymbolName + "," +
+        IIFString(GateOpen, "GATE_OPEN", "GATE_CLOSED") + "," +
+        NumToStr(ShiftDir, 0) + "," +
+        NumToStr(Close, 2) + "," +
+        IIFString(TODActive, "TOD", "NOTOD");
+
+    Print(File(LogPath), LineText);
+    PrevGate = GateOpen;
+end;

@@ -1,0 +1,53 @@
+# 0DTE options — TradeStation + Moomoo
+# Copy to config/local.yaml (merge with existing keys)
+
+options:
+  twmn_root: "C:/Users/kelec/OneDrive/Documents/TradeWithMeNow"
+  kill_switch: data/STOP_TRADING
+  trade_log: data/trades.csv
+  ts_print_log: logs/ts_print.csv
+
+  execution:
+    broker: moomoo          # moomoo | tradestation
+    # tradestation = EasyLanguage bot + ts_bridge ingest
+    # moomoo       = OpenD US options via run_0dte_moomoo.py
+
+  risk:
+    max_risk_per_trade_pct: 0.75
+    max_daily_loss_pct: 2.0
+    max_tickets_per_day: 3
+
+  windows:
+    morning: { start: "09:45", end: "10:15", enabled: true }
+    afternoon: { start: "14:30", end: "15:15", enabled: true }
+
+  moomoo:
+    underlying: US.SPY       # 0DTE on Moomoo (SPY/QQQ/TSLA); not @SPX
+    option_market: US_SECURITY   # US_SECURITY | US_INDEX
+    env: SIMULATE
+    safe_mode: true          # false to send real SIMULATE combo orders
+    contracts_per_trade: 1
+    short_delta: 0.12
+    spread_width: 5          # dollars between strikes (SPY)
+    order_type: NORMAL       # NORMAL needs limit_credit
+    limit_credit: 0.50       # min net credit for vertical (optional)
+    loop:
+      interval_sec: 60
+      timeframe: 5m
+      vix_symbol: ""
+      state_file: data/0dte_loop_state.json
+
+  backtest:
+    stop_loss_credit_multiple: 2.0   # exit when loss = 2× credit collected
+    use_live_chain_today: true       # OpenD live 0DTE chain for today's session
+
+strategies:
+  ZeroDTERegime:
+    morning_start: 945
+    morning_end: 1015
+    afternoon_start: 1430
+    afternoon_end: 1515
+    use_morning: true
+    use_afternoon: true
+    vix_max: 28
+    sma_regime: 50

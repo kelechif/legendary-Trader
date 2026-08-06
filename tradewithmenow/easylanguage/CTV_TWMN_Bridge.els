@@ -1,0 +1,81 @@
+{
+  CTV TWMN Bridge — reads proprietary CTV/TWMN study plots and publishes GlobalSignals.
+
+  Apply this study on the SAME chart as T2_TWMN indicators (after CTV ELD is loaded).
+  Configure Data stream numbers to match Format Symbol -> Data Series order on chart.
+
+  Published globals (for CTV_ConvertVert_Strategy):
+    GlobalSignal(1)  ShiftDir     -1 bear, 0 flat, +1 bull (from T2_TWMN_Shift)
+    GlobalSignal(2)  TODActive    1 = TWMN time-of-day window (T2_TWMN_Mark_TOD_Auto)
+    GlobalSignal(3)  BarDir       T2_TWMN_Bar_Dir
+    GlobalSignal(4)  EnergyOK     1 = energy band favorable (T2_TWMN_Current_Energy)
+    GlobalSignal(5)  GateOpen     composite entry permission
+}
+
+inputs:
+    ShiftDataNum(2),
+    TODDataNum(3),
+    BarDirDataNum(4),
+    EnergyDataNum(5),
+    ShiftBullThreshold(0.5),
+    ShiftBearThreshold(-0.5),
+    RequireTOD(true),
+    RequireEnergy(true);
+
+variables:
+    ShiftRaw(0),
+    TODRaw(0),
+    BarDirRaw(0),
+    EnergyRaw(0),
+    ShiftDir(0),
+    TODActive(false),
+    EnergyOK(false),
+    GateOpen(false);
+
+if BarStatus(ShiftDataNum) = 2 then
+    ShiftRaw = Value1 of ShiftDataNum
+else
+    ShiftRaw = 0;
+
+if BarStatus(TODDataNum) = 2 then
+    TODRaw = Value1 of TODDataNum
+else
+    TODRaw = 0;
+
+if BarStatus(BarDirDataNum) = 2 then
+    BarDirRaw = Value1 of BarDirDataNum
+else
+    BarDirRaw = 0;
+
+if BarStatus(EnergyDataNum) = 2 then
+    EnergyRaw = Value1 of EnergyDataNum
+else
+    EnergyRaw = 0;
+
+if ShiftRaw >= ShiftBullThreshold then
+    ShiftDir = 1
+else if ShiftRaw <= ShiftBearThreshold then
+    ShiftDir = -1
+else if BarDirRaw > 0 then
+    ShiftDir = 1
+else if BarDirRaw < 0 then
+    ShiftDir = -1
+else
+    ShiftDir = 0;
+
+TODActive = TODRaw <> 0;
+EnergyOK = EnergyRaw <> 0 or not RequireEnergy;
+
+GateOpen = ShiftDir <> 0 and EnergyOK;
+if RequireTOD then
+    GateOpen = GateOpen and TODActive;
+
+SetGlobalSignal(1, ShiftDir);
+SetGlobalSignal(2, IIF(TODActive, 1, 0));
+SetGlobalSignal(3, BarDirRaw);
+SetGlobalSignal(4, IIF(EnergyOK, 1, 0));
+SetGlobalSignal(5, IIF(GateOpen, 1, 0));
+
+Plot1(ShiftRaw, "TWMN_ShiftRaw");
+Plot2(TODRaw, "TWMN_TODRaw");
+Plot3(GateOpen, "TWMN_GateOpen");

@@ -1,0 +1,6 @@
+@echo off
+echo Stopping any process on port 8080...
+for /f "tokens=5" %%a in ('netstat -aon ^| findstr :8080 ^| findstr LISTENING') do taskkill /PID %%a /F 2>nul
+timeout /t 2 /nobreak >nul
+echo Starting Quant Platform...
+py -3 run.py

@@ -1,0 +1,17 @@
+windows:
+  morning:
+    enabled: true
+    start: "09:45"
+    end: "10:15"
+  midday:
+    enabled: false
+    start: "11:30"
+    end: "12:15"
+  afternoon:
+    enabled: true
+    start: "14:30"
+    end: "15:15"
+
+blackout:
+  open_chaos_end: "09:44"
+  pin_risk_start: "15:55"

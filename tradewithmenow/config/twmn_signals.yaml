@@ -1,0 +1,32 @@
+# TWMN indicator names discovered in CTV_May26_Michaels.tsw
+# Map each to Data stream # on your chart (Format Symbol -> Data Series)
+
+indicators:
+  shift: T2_TWMN_Shift          # Holy Shift — Plot1 / ShiftTotal
+  time_of_day: T2_TWMN_Mark_TOD_Auto
+  bar_direction: T2_TWMN_Bar_Dir
+  current_energy: T2_TWMN_Current_Energy
+  energy_band: T2_TWMN_CurrentEnergy_Band
+  expected_move: T2_TWMN_Expected_Move
+  ma_trend: T2_TWMN_MA_Trend
+  liftoff: T2_TWMN_321_Liftoff
+  vwap: T2_TWMN_VWAP
+
+bridge_defaults:
+  ShiftDataNum: 3
+  TODDataNum: 4
+  BarDirDataNum: 5
+  EnergyDataNum: 6
+  VixDataNum: 2
+
+global_signals:
+  1: ShiftDir
+  2: TODActive
+  3: BarDirRaw
+  4: EnergyOK
+  5: TWMNGate
+  10: RegimeGate
+  11: ShiftDirPassThrough
+
+workspace: TradeStation/Workspaces/CTV_May26_Michaels.tsw
+eld_package: TradeStation/T2_TWMN_CTV_V3.0_05112026A.ELD

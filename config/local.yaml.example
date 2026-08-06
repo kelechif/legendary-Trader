@@ -1,0 +1,4 @@
+# Local overrides — not committed
+# strategies:
+#   Momentum:
+#     lookback: 30

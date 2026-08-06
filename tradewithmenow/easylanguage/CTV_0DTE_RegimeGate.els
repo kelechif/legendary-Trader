@@ -1,0 +1,76 @@
+{
+  CTV 0DTE Regime Gate — uses TWMN bridge GlobalSignals + optional VIX on Data2
+  Requires CTV_TWMN_Bridge.els applied on same chart (or set UseTWMNBridge=false for fallback).
+}
+
+inputs:
+    UseTWMNBridge(true),
+    UseMorningWindow(true),
+    MorningStart(945),
+    MorningEnd(1015),
+    UseAfternoonWindow(true),
+    AfternoonStart(1430),
+    AfternoonEnd(1515),
+    BlockOpenChaos(true),
+    OpenChaosEnd(944),
+    BlockPinRisk(true),
+    PinRiskStart(1555),
+    VixDataNum(2),
+    VixMax(28),
+    RequireTODFromTWMN(true);
+
+variables:
+    InTradeWindow(false),
+    InBlackout(false),
+    ShiftDir(0),
+    TODActive(false),
+    VixOK(false),
+    SPXRegime(0),
+    GateOpen(false);
+
+InTradeWindow =
+    (UseMorningWindow and Time >= MorningStart and Time <= MorningEnd)
+    or (UseAfternoonWindow and Time >= AfternoonStart and Time <= AfternoonEnd);
+
+InBlackout =
+    (BlockOpenChaos and Time >= 930 and Time <= OpenChaosEnd)
+    or (BlockPinRisk and Time >= PinRiskStart);
+
+SPXRegime = IFF(Close > Average(Close, 50), 1, IFF(Close < Average(Close, 50), -1, 0));
+
+VixOK = True;
+if BarStatus(VixDataNum) = 2 then
+    VixOK = Close of VixDataNum <= VixMax;
+
+if UseTWMNBridge then begin
+    ShiftDir = GlobalSignal(1);
+    TODActive = GlobalSignal(2) = 1;
+end else begin
+    ShiftDir = IFF(Close > Close[5], 1, IFF(Close < Close[5], -1, 0));
+    TODActive = True;
+end;
+
+GateOpen =
+    InTradeWindow
+    and not InBlackout
+    and VixOK
+    and ShiftDir <> 0
+    and (
+        (ShiftDir = 1 and SPXRegime >= 0)
+        or (ShiftDir = -1 and SPXRegime <= 0)
+    );
+
+if RequireTODFromTWMN and UseTWMNBridge then
+    GateOpen = GateOpen and TODActive;
+
+SetGlobalSignal(10, IIF(GateOpen, 1, 0));
+SetGlobalSignal(11, ShiftDir);
+
+Plot1(GateOpen, "GateOpen");
+Plot2(ShiftDir, "ShiftDir");
+Plot3(SPXRegime, "SPXRegime");
+
+if GateOpen then
+    Alert("CTV Gate OPEN TWMN shift=" + NumToStr(ShiftDir, 0))
+else
+    Alert("CTV Gate CLOSED");
