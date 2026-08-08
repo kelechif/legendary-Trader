@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass
 from typing import Any
 
 from trading_bot.data.fetcher import DataFetcher
@@ -9,12 +10,20 @@ from trading_bot.execution.trader import build_broker
 from trading_bot.logger import get_logger
 from trading_bot.ml.model import DirectionModel, load_or_train_model
 from trading_bot.options.chain import OptionsChainFetcher
-from trading_bot.options.risk import OptionsRiskManager, OptionsRiskParams
-from trading_bot.options.selector import ContractSelector
+from trading_bot.options.risk import OptionsPositionPlan, OptionsRiskManager, OptionsRiskParams
+from trading_bot.options.selector import ContractSelector, SelectedContract
 from trading_bot.options.strategy import signal_to_option_intent
 from trading_bot.strategy.signals import SignalGenerator
 
 logger = get_logger(__name__)
+
+
+@dataclass
+class OptionsTradePreview:
+    """A selected contract plus its risk-managed sizing, computed for display
+    without submitting an order."""
+    contract: SelectedContract
+    plan: OptionsPositionPlan
 
 
 class OptionsTradingBot:
@@ -62,11 +71,42 @@ class OptionsTradingBot:
             "price": float(raw_df["close"].iloc[-1]),
         }
 
+    def _select_contract(self, symbol: str, price: float, right: str) -> SelectedContract:
+        opts_cfg = self.config["options"]
+        expiration = self.chain_fetcher.nearest_expiration(symbol, opts_cfg["target_dte_days"])
+        calls, puts = self.chain_fetcher.fetch_chain(symbol, expiration)
+        chain_df = calls if right == "call" else puts
+        target_delta = opts_cfg["target_delta_call"] if right == "call" else opts_cfg["target_delta_put"]
+        return self.selector.select(chain_df, price, expiration, right, target_delta)
+
+    def plan_for_evaluation(self, evaluation: dict[str, Any]) -> OptionsTradePreview | None:
+        """Preview the contract this bot would buy for a bullish/bearish signal
+        (call/put) and its risk-managed sizing, without submitting an order.
+        Returns None when the signal is HOLD (intent.right is None) or the live
+        option chain can't be fetched/sized."""
+        symbol = evaluation["symbol"]
+        intent = evaluation["intent"]
+        if intent.right is None:
+            return None
+
+        contract = self._select_contract(symbol, evaluation["price"], intent.right)
+        plan = self.risk_manager.plan(self.broker.get_equity(), contract.premium)
+        return OptionsTradePreview(contract=contract, plan=plan)
+
+    def submit_preview(self, symbol: str, preview: OptionsTradePreview):
+        """Execute the exact contract/sizing a caller previously previewed via
+        plan_for_evaluation, so a one-click UI trades on the numbers it showed
+        the user rather than silently re-pricing at click time."""
+        contract = preview.contract
+        return self.broker.submit_option_order(
+            contract.contract_symbol, symbol, contract.right, contract.strike, contract.expiration,
+            preview.plan.contracts, contract.premium, "BUY_TO_OPEN",
+        )
+
     def act_on_evaluation(self, evaluation: dict[str, Any]) -> None:
         symbol = evaluation["symbol"]
         intent = evaluation["intent"]
         price = evaluation["price"]
-        opts_cfg = self.config["options"]
 
         existing = self.broker.find_option_position_for_underlying(symbol)
 
@@ -80,12 +120,7 @@ class OptionsTradingBot:
                 return
             self._close_position(symbol, existing)
 
-        expiration = self.chain_fetcher.nearest_expiration(symbol, opts_cfg["target_dte_days"])
-        calls, puts = self.chain_fetcher.fetch_chain(symbol, expiration)
-        chain_df = calls if intent.right == "call" else puts
-        target_delta = opts_cfg["target_delta_call"] if intent.right == "call" else opts_cfg["target_delta_put"]
-
-        contract = self.selector.select(chain_df, price, expiration, intent.right, target_delta)
+        contract = self._select_contract(symbol, price, intent.right)
         plan = self.risk_manager.plan(self.broker.get_equity(), contract.premium)
 
         if plan.contracts <= 0:
@@ -94,9 +129,14 @@ class OptionsTradingBot:
             return
 
         self.broker.submit_option_order(
-            contract.contract_symbol, symbol, intent.right, contract.strike, expiration,
+            contract.contract_symbol, symbol, intent.right, contract.strike, contract.expiration,
             plan.contracts, contract.premium, "BUY_TO_OPEN",
         )
+
+    def close_position(self, symbol: str, position) -> None:
+        """Public one-click 'close now at market' for the dashboard, distinct
+        from the automatic stop/target close in check_exits."""
+        self._close_position(symbol, position)
 
     def _close_position(self, symbol: str, position) -> None:
         premium = self.chain_fetcher.quote_contract(symbol, position.expiration, position.contract_symbol,
@@ -105,6 +145,39 @@ class OptionsTradingBot:
             position.contract_symbol, symbol, position.right, position.strike, position.expiration,
             position.contracts, premium, "SELL_TO_CLOSE",
         )
+
+    def check_exits(self) -> list[dict[str, Any]]:
+        """Re-quote every open option position and close (SELL_TO_CLOSE) any
+        whose premium has breached its take-profit/stop-loss band, computed
+        from the same OptionsRiskParams used to size it at entry. Nothing else
+        in this bot watches option positions between evaluation cycles."""
+        closed = []
+        params = self.risk_manager.params
+        for contract_symbol, position in list(self.broker.option_positions.items()):
+            try:
+                premium = self.chain_fetcher.quote_contract(
+                    position.underlying, position.expiration, contract_symbol, position.right
+                )
+            except Exception as exc:  # noqa: BLE001 - one bad symbol shouldn't block the rest
+                logger.warning("check_exits: could not re-quote %s: %s", contract_symbol, exc)
+                continue
+
+            take_profit = position.entry_premium * (1 + params.take_profit_pct)
+            stop_loss = position.entry_premium * (1 - params.stop_loss_pct)
+            reason = None
+            if premium <= stop_loss:
+                reason = "stop_loss"
+            elif premium >= take_profit:
+                reason = "take_profit"
+
+            if reason is not None:
+                result = self.broker.submit_option_order(
+                    contract_symbol, position.underlying, position.right, position.strike, position.expiration,
+                    position.contracts, premium, "SELL_TO_CLOSE",
+                )
+                closed.append({"symbol": position.underlying, "contract_symbol": contract_symbol,
+                                "reason": reason, "premium": premium, "result": result})
+        return closed
 
     def run_once(self, symbols: list[str]) -> list[dict[str, Any]]:
         results = []

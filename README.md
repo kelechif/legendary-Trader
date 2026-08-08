@@ -44,14 +44,22 @@ Data (Yahoo Finance)  →  Indicators/Features  →  ML direction model
 - **Execution**: `trading_bot/execution/` provides a `PaperBroker` (simulated
   fills, persisted to a local JSON file), an optional `AlpacaBroker`, and an
   optional `MoomooBroker` for live/paper trading, plus a `TradingBot` loop
-  that ties everything together.
+  that ties everything together. `plan_for_evaluation()` previews the
+  risk-managed entry/stop/target for a BUY signal without submitting
+  anything; `submit_plan()` executes that exact preview; `check_exits()`
+  re-prices open positions and closes any that have breached their stored
+  stop-loss/take-profit. These three are what the dashboard's Scanner tab
+  is built on.
 - **Options**: `trading_bot/options/` turns the same directional signal into
   a long-calls/long-puts trade: `chain.py` fetches the live Yahoo Finance
   option chain, `pricing.py` is a from-scratch Black-Scholes pricer/Greeks
   calculator, `selector.py` picks the contract closest to a target delta,
   and `risk.py` sizes contracts by premium-at-risk. `OptionsTradingBot`
   (`execution/options_trader.py`) runs the paper-trading loop, sharing the
-  same `PaperBroker` account (and cash) as the equity bot.
+  same `PaperBroker` account (and cash) as the equity bot, and exposes the
+  same preview/execute/exit-monitoring trio (`plan_for_evaluation()` /
+  `submit_preview()` / `check_exits()`), plus `close_position()` for a
+  manual one-click close.
 
 ## Setup
 
@@ -167,11 +175,38 @@ regardless of `broker.mode`.
 streamlit run dashboard.py
 ```
 
-A read-only-by-default view over the same engine: current signals for your
-watchlist, the paper account (cash, positions, option positions, recent
-trades), and both backtest types with an equity-curve chart. Viewing signals
-never places an order — that only happens if you click "Execute paper trades
-on these signals" explicitly.
+**AlphaFlow** — a read-only-by-default view over the same engine, themed via
+`.streamlit/config.toml`. Five tabs:
+
+- **Scanner** — the main console. Enter any comma-separated list of tickers
+  (defaults to the watchlist plus a broader set of liquid, optionable large
+  caps — fully editable, not limited to a fixed list), pick Stocks/Futures or
+  Options, and click **Scan**. Each symbol is evaluated by the real signal +
+  risk engine and rendered as a row: signal (BUY/SELL/HOLD or CALL/PUT),
+  price, the model's reasoning, and — for anything actionable — the exact
+  risk-managed entry/stop/target (or premium/strike/expiration for options)
+  it would trade. A **Trade** button on each actionable row submits that
+  *exact previewed* order in one click (no silent re-pricing between preview
+  and execution); an existing position shows a **Close** button instead.
+  **Check stop/target exits now** re-prices every open position and closes
+  any that have breached their stop-loss/take-profit band — this is what
+  makes the stop/target shown at entry mean something after the fact, since
+  nothing else watches positions between scans.
+- **Signals** — the original read-only signal table plus a bulk "execute all"
+  button, unchanged except that the button now names and gates on the actual
+  broker mode (see below).
+- **Paper Account**, **Equity Backtest**, **Options Backtest** — unchanged
+  from before.
+
+**Safety gating:** every trade button, one-click or bulk, is a separate
+explicit click. In `broker.mode: paper` (the default) that's the whole story
+— everything is simulated. In any other mode, a warning banner appears and
+every equity/futures trade button on the page stays disabled until you tick
+"I understand — enable live Trade buttons." Options trading always executes
+on its own separate paper account regardless of `broker.mode`, since no live
+options broker is wired up (see above) — sharing the same `PaperBroker` (and
+thus the same cash) as the equity bot only when the equity broker is itself
+paper.
 
 ## Configuration
 
@@ -207,6 +242,7 @@ trading_bot/
   options/risk.py           # premium-at-risk position sizing
   options/backtest.py       # synthetic Black-Scholes walk-forward backtest
 main.py                    # CLI: backtest / train / trade / options-chain / options-backtest / options-trade
-dashboard.py                 # Streamlit dashboard (signals, paper account, both backtests)
+dashboard.py                 # AlphaFlow Streamlit dashboard (scanner, signals, paper account, both backtests)
+.streamlit/config.toml       # dashboard theme
 config.yaml                 # watchlist, model, risk, options, and broker settings
 ```

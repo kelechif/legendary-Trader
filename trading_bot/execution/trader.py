@@ -8,7 +8,7 @@ from trading_bot.execution.broker import AlpacaBroker, BaseBroker, MoomooBroker,
 from trading_bot.features.indicators import add_all_indicators
 from trading_bot.logger import get_logger
 from trading_bot.ml.model import DirectionModel, load_or_train_model
-from trading_bot.strategy.risk import RiskManager, RiskParams
+from trading_bot.strategy.risk import PositionPlan, RiskManager, RiskParams
 from trading_bot.strategy.signals import Signal, SignalGenerator
 
 logger = get_logger(__name__)
@@ -79,6 +79,57 @@ class TradingBot:
             "price": latest_close,
             "atr": latest_atr,
         }
+
+    def plan_for_evaluation(self, evaluation: dict[str, Any]) -> PositionPlan | None:
+        """Preview the risk-managed entry/stop/target for a BUY signal without
+        submitting an order. Returns None for SELL/HOLD, where there's no new
+        long entry to plan (this bot is long-only; SELL just closes an existing
+        position at market)."""
+        if evaluation["signal"].signal != Signal.BUY:
+            return None
+        equity = self.broker.get_equity()
+        return self.risk_manager.plan_long(equity, evaluation["price"], evaluation["atr"])
+
+    def submit_plan(self, symbol: str, price: float, plan: PositionPlan):
+        """Execute the exact BUY plan a caller previously previewed via
+        plan_for_evaluation, so a one-click UI trades on the numbers it showed
+        the user rather than silently re-pricing at click time."""
+        return self.broker.submit_order(symbol, "BUY", plan.shares, price, plan.stop_loss, plan.take_profit)
+
+    def check_exits(self) -> list[dict[str, Any]]:
+        """Re-price every open position against its stored stop-loss/take-profit
+        and close (at that trigger price) any that have been breached.
+
+        This is the piece that makes the stop/target shown at entry mean
+        something after the fact — nothing else in this bot watches positions
+        between evaluation cycles. PaperBroker fills the close immediately;
+        live brokers don't get automatic bracket monitoring here, so this is a
+        no-op for anything other than a PaperBroker position (open positions on
+        a live broker should be protected by real bracket/stop orders placed at
+        the broker, which this project does not yet submit).
+        """
+        closed = []
+        if not isinstance(self.broker, PaperBroker):
+            return closed
+
+        for symbol, position in list(self.broker.positions.items()):
+            try:
+                raw_df = self.fetcher.fetch(symbol, period="5d", interval="1d")
+            except Exception as exc:  # noqa: BLE001 - one bad symbol shouldn't block the rest
+                logger.warning("check_exits: could not re-price %s: %s", symbol, exc)
+                continue
+
+            price = float(raw_df["close"].iloc[-1])
+            trigger_price, reason = None, None
+            if price <= position.stop_loss:
+                trigger_price, reason = position.stop_loss, "stop_loss"
+            elif price >= position.take_profit:
+                trigger_price, reason = position.take_profit, "take_profit"
+
+            if trigger_price is not None:
+                result = self.broker.submit_order(symbol, "SELL", position.shares, trigger_price)
+                closed.append({"symbol": symbol, "reason": reason, "price": trigger_price, "result": result})
+        return closed
 
     def act_on_evaluation(self, evaluation: dict[str, Any]) -> None:
         symbol = evaluation["symbol"]
