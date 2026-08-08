@@ -25,6 +25,7 @@ from trading_bot.ml.model import DirectionModel
 from trading_bot.options.backtest import SyntheticOptionsBacktester
 from trading_bot.options.risk import OptionsRiskManager, OptionsRiskParams
 from trading_bot.backtest.engine import BacktestEngine
+from trading_bot.backtest.sweep import ALL_STRATEGIES, STRATEGY_LABELS, best_per_symbol, run_sweep
 from trading_bot.strategy.risk import RiskManager, RiskParams
 from trading_bot.strategy.signals import Signal, SignalGenerator
 
@@ -234,8 +235,8 @@ else:
     st.caption("Broker mode: **paper** — every trade on this page is simulated. Nothing touches a real market.")
     live_confirmed = True
 
-tab_scanner, tab_signals, tab_account, tab_backtest, tab_options_backtest = st.tabs(
-    ["Scanner", "Signals", "Paper Account", "Equity Backtest", "Options Backtest"]
+tab_scanner, tab_lab, tab_signals, tab_account, tab_backtest, tab_options_backtest = st.tabs(
+    ["Scanner", "Strategy Lab", "Signals", "Paper Account", "Equity Backtest", "Options Backtest"]
 )
 
 # ----------------------------------------------------------------------------
@@ -321,6 +322,82 @@ with tab_scanner:
             st.markdown("</div>", unsafe_allow_html=True)
     elif scan_rows is None:
         st.caption("Enter symbols above and click Scan.")
+
+
+# ----------------------------------------------------------------------------
+# Strategy Lab: every strategy x every ticker -> best fit per ticker
+# ----------------------------------------------------------------------------
+with tab_lab:
+    st.subheader("Which strategy actually fits which ticker?")
+    st.caption(
+        "Backtests every strategy below against every symbol over the same held-out window "
+        "(the same train/test split the ML model uses) and ranks them per symbol. A ticker that "
+        "trends favors the SMA/MACD strategies; one that chops sideways tends to favor RSI/Bollinger "
+        "mean-reversion. Read this as a research tool, not a guarantee — more history and more symbols "
+        "make the ranking more trustworthy."
+    )
+
+    lab_symbols_input = st.text_area(
+        "Symbols to sweep (comma-separated)",
+        value=", ".join(_default_universe(config, include_futures=True)),
+        height=68, key="lab_symbols",
+    )
+    lab_symbols = [s.strip().upper() for s in lab_symbols_input.split(",") if s.strip()]
+
+    lab_col1, lab_col2, lab_col3 = st.columns(3)
+    lab_period = lab_col1.selectbox("History window", ["6mo", "1y", "2y", "5y"], index=2, key="lab_period")
+    lab_metric = lab_col2.selectbox(
+        "Rank by", ["sharpe_ratio", "total_return_pct", "cagr_pct", "win_rate_pct"],
+        format_func=lambda m: {"sharpe_ratio": "Sharpe ratio", "total_return_pct": "Total return %",
+                                "cagr_pct": "CAGR %", "win_rate_pct": "Win rate %"}[m],
+        key="lab_metric",
+    )
+    lab_strategies = lab_col3.multiselect(
+        "Strategies", options=ALL_STRATEGIES, default=ALL_STRATEGIES,
+        format_func=lambda s: STRATEGY_LABELS[s], key="lab_strategies",
+    )
+
+    if st.button("Run sweep", type="primary", key="lab_run"):
+        if not lab_strategies:
+            st.error("Pick at least one strategy.")
+        else:
+            n_runs = len(lab_symbols) * len(lab_strategies)
+            with st.spinner(f"Running {n_runs} backtests ({len(lab_symbols)} symbols x "
+                             f"{len(lab_strategies)} strategies) — this trains a model per symbol "
+                             f"for the ML strategy, so it can take a while..."):
+                st.session_state.lab_results = run_sweep(
+                    lab_symbols, config, strategy_names=lab_strategies, period=lab_period,
+                )
+
+    lab_results = st.session_state.get("lab_results")
+    if lab_results is not None and not lab_results.empty:
+        errors = lab_results[lab_results["error"].notna()]
+        if not errors.empty:
+            with st.expander(f"{len(errors)} of {len(lab_results)} backtests failed"):
+                st.dataframe(errors[["symbol", "strategy", "error"]], use_container_width=True)
+
+        best = best_per_symbol(lab_results, metric=lab_metric)
+        if best.empty:
+            st.warning("Every backtest failed — nothing to rank. See the errors above.")
+        else:
+            st.markdown("**Best strategy per symbol**")
+            display_best = best[["symbol", "strategy", "sharpe_ratio", "total_return_pct",
+                                  "max_drawdown_pct", "win_rate_pct", "num_trades"]].copy()
+            display_best["strategy"] = display_best["strategy"].map(STRATEGY_LABELS)
+            display_best.columns = ["Symbol", "Best strategy", "Sharpe", "Return %", "Max DD %", "Win %", "Trades"]
+            st.dataframe(display_best, use_container_width=True, hide_index=True)
+
+            with st.expander("Full result matrix (every symbol x every strategy)"):
+                pivot = lab_results.pivot(index="symbol", columns="strategy", values=lab_metric)
+                pivot = pivot.rename(columns=STRATEGY_LABELS)
+                st.dataframe(
+                    pivot.style.background_gradient(cmap="RdYlGn", axis=1).format("{:.2f}"),
+                    use_container_width=True,
+                )
+                st.caption("Raw rows, one per (symbol, strategy) pair:")
+                st.dataframe(lab_results, use_container_width=True, hide_index=True)
+    elif lab_results is not None:
+        st.warning("The sweep returned no rows.")
 
 
 with tab_signals:

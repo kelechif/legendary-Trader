@@ -131,6 +131,48 @@ Finance — only the backtest is synthetic.
 Options trading is currently **paper-only** (no live options broker is
 wired up); `broker.mode: alpaca` only applies to the equity/futures bot.
 
+### 5. Strategy sweep: which strategy fits which ticker
+
+```bash
+# Backtest every strategy against a few symbols
+python main.py sweep --symbol AAPL MSFT NVDA --period 2y
+
+# Sweep the configured watchlist, rank by total return instead of Sharpe,
+# and save the full result matrix
+python main.py sweep --metric total_return_pct --out sweep_results.csv
+
+# Restrict to specific strategies
+python main.py sweep --symbol TSLA --strategies sma_20_50 rsi_mean_reversion buy_and_hold
+```
+
+Backtests **every symbol against every strategy** and ranks them per symbol,
+so instead of assuming one strategy fits every ticker, you get a read on
+which one actually did over that ticker's own history. Seven strategies ship
+by default:
+
+| key | what it does |
+|---|---|
+| `ml_trend` | this repo's own ML model + SMA200 trend filter + RSI guard (unchanged from `backtest`) |
+| `sma_20_50` | trend-following: long while the 20-day SMA is above the 50-day |
+| `sma_50_200` | longer trend-following: the classic golden/death cross |
+| `rsi_mean_reversion` | buy oversold (RSI ≤ 30), sell overbought (RSI ≥ 70) |
+| `macd_crossover` | momentum: long while the MACD line is above its signal line |
+| `bollinger_reversion` | mean-reversion off the Bollinger Bands |
+| `buy_and_hold` | baseline — buys once and holds, for comparison |
+
+Every strategy is backtested over the *same* held-out window (the same
+train/test split the ML model uses), with the same ATR-based stop/target
+sizing, so results are directly comparable — this isn't the ML backtest
+re-run seven times with different labels, it's seven genuinely different
+entry/exit rules sharing one risk engine
+(`trading_bot/backtest/strategy_engine.py::RuleBacktester` for the six
+non-ML strategies, `trading_bot/strategy/rules.py` for their signal logic).
+A bad ticker or too little history fails that one (symbol, strategy) pair
+without aborting the rest of the sweep.
+
+Also available as the **Strategy Lab** tab in the dashboard, with the same
+options plus a color-coded heatmap of the full symbol x strategy matrix.
+
 ### Going live (optional, off by default)
 
 To route real orders through [Alpaca](https://alpaca.markets/), set
@@ -176,7 +218,7 @@ streamlit run dashboard.py
 ```
 
 **AlphaFlow** — a read-only-by-default view over the same engine, themed via
-`.streamlit/config.toml`. Five tabs:
+`.streamlit/config.toml`. Six tabs:
 
 - **Scanner** — the main console. Enter any comma-separated list of tickers
   (defaults to the watchlist plus a broader set of liquid, optionable large
@@ -192,6 +234,11 @@ streamlit run dashboard.py
   any that have breached their stop-loss/take-profit band — this is what
   makes the stop/target shown at entry mean something after the fact, since
   nothing else watches positions between scans.
+- **Strategy Lab** — the dashboard front-end for `python main.py sweep` (see
+  above): pick symbols, a history window, a ranking metric, and which of the
+  seven strategies to include, then **Run sweep**. Shows the best strategy
+  per symbol as a table plus a color-coded symbol x strategy heatmap of the
+  full result matrix.
 - **Signals** — the original read-only signal table plus a bulk "execute all"
   button, unchanged except that the button now names and gates on the actual
   broker mode (see below).
@@ -232,7 +279,10 @@ trading_bot/
   ml/model.py              # direction-prediction model (train/predict/persist)
   strategy/signals.py      # ML + technical-filter signal generator
   strategy/risk.py         # ATR-based position sizing and risk limits
-  backtest/engine.py       # walk-forward backtester + performance metrics
+  strategy/rules.py        # indicator-only strategies (SMA/RSI/MACD/Bollinger/buy-hold)
+  backtest/engine.py       # walk-forward backtester + performance metrics (ML strategy)
+  backtest/strategy_engine.py  # same walk-forward mechanics, for the indicator-only strategies
+  backtest/sweep.py        # every strategy x every symbol -> best fit per symbol
   execution/broker.py      # PaperBroker (default) + optional AlpacaBroker/MoomooBroker
   execution/trader.py      # ties data -> model -> signal -> risk -> broker (equity/futures)
   execution/options_trader.py  # same, for options (long calls/puts)
@@ -241,8 +291,8 @@ trading_bot/
   options/selector.py       # delta-based contract selection
   options/risk.py           # premium-at-risk position sizing
   options/backtest.py       # synthetic Black-Scholes walk-forward backtest
-main.py                    # CLI: backtest / train / trade / options-chain / options-backtest / options-trade
-dashboard.py                 # AlphaFlow Streamlit dashboard (scanner, signals, paper account, both backtests)
+main.py                    # CLI: backtest / train / trade / options-chain / options-backtest / options-trade / sweep
+dashboard.py                 # AlphaFlow Streamlit dashboard (scanner, strategy lab, signals, paper account, both backtests)
 .streamlit/config.toml       # dashboard theme
 config.yaml                 # watchlist, model, risk, options, and broker settings
 ```
