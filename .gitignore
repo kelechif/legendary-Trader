@@ -14,3 +14,11 @@ data_cache/
 paper_account.json
 trade_log.csv
 equity_curve.png
+
+# local runtime state / caches (root only; keep tracked configs like config.yaml)
+/state/
+/structure.txt
+/config/
+/data/
+/logs/
+/tradewithmenow/
