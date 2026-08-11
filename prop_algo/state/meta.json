@@ -1,0 +1,10 @@
+{
+    "meta_mode": "NORMAL",
+    "patterns": [
+        {
+            "avg_fitness": -30.569587653487797,
+            "anomalies": 0,
+            "exec_mode": "ADAPTIVE"
+        }
+    ]
+}

@@ -1,0 +1,186 @@
+"""mission-control-service: aggregate Redis streams into mission_stream."""
+
+from __future__ import annotations
+
+import time
+from typing import Any
+
+from core.adapters.factory import register_broker_accounts
+from core.logging.logger import get_logger
+from core.registry.registry import Registry
+from infra.stream import Stream
+from mission_control.control_state import get_control_state
+from mission_control.mission_engine import MissionControlEngine
+from trading.multi_account.manager import MultiAccountManager
+
+log = get_logger("mission-control-service")
+SERVICE = "mission-control-service"
+
+_DEFAULT_LEARNING = {
+    "best_params": {"threshold": 0.005, "lookback": 50, "fitness": 0.0},
+    "meta_mode": "NORMAL",
+}
+_DEFAULT_EXECUTION = {
+    "route": "MARKET",
+    "slippage": 0.0005,
+    "volatility": 0.001,
+    "size": 0.1,
+}
+
+
+def _normalize_learning(learning: dict | None) -> dict:
+    base = dict(_DEFAULT_LEARNING)
+    if not learning:
+        return base
+    best = dict(base["best_params"])
+    raw_best = learning.get("best_params") or {}
+    if isinstance(raw_best, dict):
+        best.update(raw_best)
+    if "threshold" not in best:
+        best["threshold"] = 0.005
+    out = dict(learning)
+    out["best_params"] = best
+    out.setdefault("meta_mode", base["meta_mode"])
+    return out
+
+
+def _normalize_execution(execution: Any) -> dict:
+    if isinstance(execution, dict) and "route" in execution:
+        out = {
+            "route": execution.get("route", "MARKET"),
+            "slippage": float(execution.get("slippage", 0.0005)),
+            "volatility": float(execution.get("volatility", 0.001)),
+            "size": float(execution.get("size", 0.1)),
+        }
+        if "backend" in execution:
+            out["backend"] = execution.get("backend")
+        if "neural_enabled" in execution:
+            out["neural_enabled"] = bool(execution.get("neural_enabled"))
+        if "blocked" in execution:
+            out["blocked"] = bool(execution.get("blocked"))
+        if execution.get("block_reason") is not None:
+            out["block_reason"] = execution.get("block_reason")
+        risk_off = execution.get("risk_off")
+        if isinstance(risk_off, dict):
+            out["risk_off"] = risk_off
+        autopilot = execution.get("autopilot")
+        if isinstance(autopilot, dict):
+            out["autopilot"] = autopilot
+        orders = execution.get("orders")
+        if isinstance(orders, list):
+            out["orders"] = orders
+        multi = execution.get("multi_account")
+        if isinstance(multi, dict):
+            out["multi_account"] = multi
+        return out
+    return dict(_DEFAULT_EXECUTION)
+
+
+def run_loop(bus: Stream | None = None, poll_block_ms: int = 200) -> None:
+    bus = bus or Stream()
+    engine = MissionControlEngine()
+    registry = Registry()
+    adapter_kind = register_broker_accounts(registry)
+    multi = MultiAccountManager(registry)
+    log.info(
+        "%s broker adapter=%s multi_account=%s accounts=%s",
+        SERVICE,
+        adapter_kind,
+        "on" if multi.enabled() else "off",
+        multi.account_count(),
+    )
+
+    last: dict[str, Any] = {
+        "risk": None,
+        "governance": None,
+        "unified": None,
+        "learning": None,
+        "execution": None,
+        "autonomy": None,
+        "marl": None,
+        "simulation": None,
+    }
+    last_control_sig: tuple[bool, bool, bool] | None = None
+    streams = (
+        ("risk", "risk_stream"),
+        ("governance", "governance_stream"),
+        ("unified", "unified_core_stream"),
+        ("learning", "learning_stream"),
+        ("execution", "execution_stream"),
+        # Optional / torch-profile publishers — folded into mission when present.
+        ("autonomy", "autonomy_stream"),
+        ("marl", "marl_stream"),
+        ("simulation", "simulation_stream"),
+    )
+
+    log.info("%s aggregating streams -> mission_stream", SERVICE)
+
+    while True:
+        updated = False
+        for i, (key, stream_name) in enumerate(streams):
+            # Block only on the first stream; drain the rest quickly.
+            block = poll_block_ms if i == 0 else 1
+            msg = bus.consume(
+                stream_name, "mission_group", "mission_consumer", block=block
+            )
+            if msg is not None:
+                last[key] = msg
+                updated = True
+
+        ctrl = get_control_state()
+        ctrl_sig = (
+            bool(ctrl.get("trading_halt")),
+            bool(ctrl.get("force_safe")),
+            bool(ctrl.get("autopilot_paused")),
+        )
+        control_changed = ctrl_sig != last_control_sig
+
+        if not (last["risk"] and last["governance"] and last["unified"]):
+            if not updated:
+                time.sleep(0.25)
+            continue
+
+        # Republish when streams update or operator control changes mode/flags.
+        if not updated and not control_changed:
+            time.sleep(0.05)
+            continue
+
+        last_control_sig = ctrl_sig
+        multi_summary = multi.summary()
+        probes = {
+            "market": multi_summary.get("accounts") or multi.snapshot(),
+            "risk": last["risk"],
+            "governance": last["governance"],
+            "unified": last["unified"],
+            "learning": _normalize_learning(last["learning"]),
+            "execution": _normalize_execution(last["execution"]),
+            "adapter": adapter_kind,
+            "multi_account": multi_summary,
+        }
+        if last["autonomy"] is not None:
+            probes["autonomy"] = last["autonomy"]
+        if last["marl"] is not None:
+            probes["marl"] = last["marl"]
+        if last["simulation"] is not None:
+            probes["simulation"] = last["simulation"]
+        result = engine.run(probes, control=ctrl)
+        snapshot = {
+            **probes,
+            "alerts": result["alerts"],
+            "dashboard": result["dashboard"],
+            "actions": result["actions"],
+            "global_mode": result["global_mode"],
+            "global_mode_reason": result.get("global_mode_reason"),
+            "stream_global_mode": result.get("stream_global_mode"),
+            "control": {
+                "autopilot_paused": bool(ctrl.get("autopilot_paused")),
+                "trading_halt": bool(ctrl.get("trading_halt")),
+                "force_safe": bool(ctrl.get("force_safe")),
+            },
+        }
+        bus.publish("mission_stream", snapshot)
+
+
+def run():
+    """Backward-compatible entry used by older stubs."""
+    run_loop()

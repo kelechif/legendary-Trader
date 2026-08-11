@@ -1,0 +1,5 @@
+# Extra deps for MARL / simulation image only.
+# Dockerfile.torch installs these from https://download.pytorch.org/whl/cpu
+# (plain PyPI torch on Linux often pulls multi-GB CUDA wheels).
+# Do not merge into the light image / deploy/requirements.txt.
+torch>=2.2.0

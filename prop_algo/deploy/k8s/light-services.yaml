@@ -1,0 +1,409 @@
+# Light-path app Deployments/Services matching prop_algo/deploy/docker-compose.yml.
+# Image: build once from repo root, then load into the cluster:
+#   docker build -f prop_algo/deploy/Dockerfile -t prop_algo:light .
+#   kind load docker-image prop_algo:light   # or minikube image load / retag to a registry
+#
+# All services share the same image; only command differs (same as compose).
+# Brokers default to mock in-cluster. Live MT5/cTrader: run on Windows host (see deploy README).
+# MARL/sim need torch — see docker-compose.torch.yml.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prop-algo-env
+  namespace: prop-algo
+data:
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  STREAM_MAXLEN: "10000"
+  PYTHONPATH: /app
+  PYTHONUNBUFFERED: "1"
+  BROKER_ADAPTER: mock
+  MULTI_ACCOUNT_ENABLED: "1"
+  NEURAL_EXECUTION: "1"
+  RISK_OFF_ENABLED: "1"
+  AUTOPILOT_ENABLED: "1"
+---
+# --- market_data_service (metrics :8000) ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: market-data-service
+  namespace: prop-algo
+  labels:
+    app: market-data-service
+    prop-algo/role: light
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: market-data-service
+  template:
+    metadata:
+      labels:
+        app: market-data-service
+        prop-algo/role: light
+    spec:
+      containers:
+        - name: market-data-service
+          image: prop_algo:light
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "services.market_data_service.main"]
+          envFrom:
+            - configMapRef:
+                name: prop-algo-env
+          ports:
+            - name: metrics
+              containerPort: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: market-data-service
+  namespace: prop-algo
+  labels:
+    app: prop-service
+    prop-algo/component: market-data-service
+spec:
+  selector:
+    app: market-data-service
+  ports:
+    - name: metrics
+      port: 8000
+      targetPort: metrics
+---
+# --- strategy_service ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: strategy-service
+  namespace: prop-algo
+  labels:
+    app: strategy-service
+    prop-algo/role: light
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: strategy-service
+  template:
+    metadata:
+      labels:
+        app: strategy-service
+        prop-algo/role: light
+    spec:
+      containers:
+        - name: strategy-service
+          image: prop_algo:light
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "services.strategy_service.main"]
+          envFrom:
+            - configMapRef:
+                name: prop-algo-env
+---
+# --- risk_service (metrics :8001) ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: risk-service
+  namespace: prop-algo
+  labels:
+    app: risk-service
+    prop-algo/role: light
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: risk-service
+  template:
+    metadata:
+      labels:
+        app: risk-service
+        prop-algo/role: light
+    spec:
+      containers:
+        - name: risk-service
+          image: prop_algo:light
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "services.risk_service.main"]
+          envFrom:
+            - configMapRef:
+                name: prop-algo-env
+          ports:
+            - name: metrics
+              containerPort: 8001
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: risk-service
+  namespace: prop-algo
+  labels:
+    app: prop-service
+    prop-algo/component: risk-service
+spec:
+  selector:
+    app: risk-service
+  ports:
+    - name: metrics
+      port: 8001
+      targetPort: metrics
+---
+# --- governance_service ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: governance-service
+  namespace: prop-algo
+  labels:
+    app: governance-service
+    prop-algo/role: light
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: governance-service
+  template:
+    metadata:
+      labels:
+        app: governance-service
+        prop-algo/role: light
+    spec:
+      containers:
+        - name: governance-service
+          image: prop_algo:light
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "services.governance_service.main"]
+          envFrom:
+            - configMapRef:
+                name: prop-algo-env
+---
+# --- unified_core_service (metrics :8004) ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: unified-core-service
+  namespace: prop-algo
+  labels:
+    app: unified-core-service
+    prop-algo/role: light
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: unified-core-service
+  template:
+    metadata:
+      labels:
+        app: unified-core-service
+        prop-algo/role: light
+    spec:
+      containers:
+        - name: unified-core-service
+          image: prop_algo:light
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "services.unified_core_service.main"]
+          envFrom:
+            - configMapRef:
+                name: prop-algo-env
+          ports:
+            - name: metrics
+              containerPort: 8004
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: unified-core-service
+  namespace: prop-algo
+  labels:
+    app: prop-service
+    prop-algo/component: unified-core-service
+spec:
+  selector:
+    app: unified-core-service
+  ports:
+    - name: metrics
+      port: 8004
+      targetPort: metrics
+---
+# --- execution_service (metrics :8002) ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: execution-service
+  namespace: prop-algo
+  labels:
+    app: execution-service
+    prop-algo/role: light
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: execution-service
+  template:
+    metadata:
+      labels:
+        app: execution-service
+        prop-algo/role: light
+    spec:
+      containers:
+        - name: execution-service
+          image: prop_algo:light
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "services.execution_service.main"]
+          envFrom:
+            - configMapRef:
+                name: prop-algo-env
+          ports:
+            - name: metrics
+              containerPort: 8002
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: execution-service
+  namespace: prop-algo
+  labels:
+    app: prop-service
+    prop-algo/component: execution-service
+spec:
+  selector:
+    app: execution-service
+  ports:
+    - name: metrics
+      port: 8002
+      targetPort: metrics
+---
+# --- learning_service (metrics :8003) ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: learning-service
+  namespace: prop-algo
+  labels:
+    app: learning-service
+    prop-algo/role: light
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: learning-service
+  template:
+    metadata:
+      labels:
+        app: learning-service
+        prop-algo/role: light
+    spec:
+      containers:
+        - name: learning-service
+          image: prop_algo:light
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "services.learning_service.main"]
+          envFrom:
+            - configMapRef:
+                name: prop-algo-env
+          ports:
+            - name: metrics
+              containerPort: 8003
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: learning-service
+  namespace: prop-algo
+  labels:
+    app: prop-service
+    prop-algo/component: learning-service
+spec:
+  selector:
+    app: learning-service
+  ports:
+    - name: metrics
+      port: 8003
+      targetPort: metrics
+---
+# --- mission_control_service (aggregates → mission_stream) ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mission-control-service
+  namespace: prop-algo
+  labels:
+    app: mission-control-service
+    prop-algo/role: light
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mission-control-service
+  template:
+    metadata:
+      labels:
+        app: mission-control-service
+        prop-algo/role: light
+    spec:
+      containers:
+        - name: mission-control-service
+          image: prop_algo:light
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "services.mission_control_service.main"]
+          envFrom:
+            - configMapRef:
+                name: prop-algo-env
+---
+# --- autonomy_service (torch-free) ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: autonomy-service
+  namespace: prop-algo
+  labels:
+    app: autonomy-service
+    prop-algo/role: light
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: autonomy-service
+  template:
+    metadata:
+      labels:
+        app: autonomy-service
+        prop-algo/role: light
+    spec:
+      containers:
+        - name: autonomy-service
+          image: prop_algo:light
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "services.autonomy_service.main"]
+          envFrom:
+            - configMapRef:
+                name: prop-algo-env
+---
+# --- multi_agent_service (torch-free rule agents) ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: multi-agent-service
+  namespace: prop-algo
+  labels:
+    app: multi-agent-service
+    prop-algo/role: light
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: multi-agent-service
+  template:
+    metadata:
+      labels:
+        app: multi-agent-service
+        prop-algo/role: light
+    spec:
+      containers:
+        - name: multi-agent-service
+          image: prop_algo:light
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "services.multi_agent_service.main"]
+          envFrom:
+            - configMapRef:
+                name: prop-algo-env

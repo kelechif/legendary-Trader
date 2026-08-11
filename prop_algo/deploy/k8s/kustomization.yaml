@@ -1,0 +1,16 @@
+# Light path only (no operator CRDs). Apply from this directory:
+#   kubectl apply -k .
+# Optional monitoring:
+#   kubectl -n prop-algo create configmap grafana-dashboard-prop-algo \
+#     --from-file=prop_algo-overview.json=../grafana/prop_algo-overview.json \
+#     --dry-run=client -o yaml | kubectl apply -f -
+#   kubectl apply -f grafana.yaml
+#   (and prometheus.yaml / servicemonitor.yaml if prometheus-operator is installed)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: prop-algo
+resources:
+  - namespace.yaml
+  - redis.yaml
+  - light-services.yaml
+  - mission-ui.yaml

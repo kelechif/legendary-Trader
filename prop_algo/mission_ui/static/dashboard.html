@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mission Control</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --fg: #e7ecf1;
+      --muted: #8b98a5;
+      --ok: #3dd68c;
+      --warn: #e6b450;
+      --bad: #f07178;
+      --panel: #1a2332;
+      --border: #2a3648;
+      --chip: #243044;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: radial-gradient(1200px 600px at 10% -10%, #1c2a3a, var(--bg));
+      color: var(--fg);
+      min-height: 100vh;
+      padding: 1.5rem 2rem 2rem;
+    }
+
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 0.75rem 1.25rem;
+      margin-bottom: 1.25rem;
+    }
+
+    h1 {
+      margin: 0;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      font-size: 1.5rem;
+    }
+
+    #status {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    #status[data-state="ok"] { color: var(--ok); }
+    #status[data-state="warn"] { color: var(--warn); }
+    #status[data-state="bad"] { color: var(--bad); }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem 0.65rem;
+      margin-bottom: 1.25rem;
+      padding: 0.65rem 0.85rem;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+
+    .controls .ctrl-label {
+      color: var(--muted);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-right: 0.25rem;
+    }
+
+    .controls .ctrl-status {
+      color: var(--muted);
+      font-size: 0.85rem;
+      font-variant-numeric: tabular-nums;
+      min-width: 10rem;
+    }
+
+    .controls .ctrl-status[data-state="paused"],
+    .controls .ctrl-status[data-state="halt"],
+    .controls .ctrl-status[data-state="safe"] { color: var(--warn); }
+
+    .controls .ctrl-status[data-state="running"] { color: var(--ok); }
+
+    .controls button {
+      appearance: none;
+      border: 1px solid var(--border);
+      background: var(--chip);
+      color: var(--fg);
+      border-radius: 4px;
+      padding: 0.35rem 0.75rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+    }
+
+    .controls button:hover { border-color: #3d4f66; }
+    .controls button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .controls button.danger { border-color: #5a2d32; color: var(--bad); }
+    .controls button.warn { border-color: #5a4a2d; color: var(--warn); }
+    .controls button.ok { border-color: #2d5a45; color: var(--ok); }
+
+    .mode-badge {
+      margin-left: auto;
+      padding: 0.25rem 0.7rem;
+      border-radius: 4px;
+      background: var(--chip);
+      border: 1px solid var(--border);
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .mode-badge[data-mode="NORMAL"] { color: var(--ok); border-color: #2d5a45; }
+    .mode-badge[data-mode="SAFE_MODE"],
+    .mode-badge[data-mode="SAFE"] { color: var(--warn); border-color: #5a4a2d; }
+    .mode-badge[data-mode="HALT"],
+    .mode-badge[data-mode="RISK_OFF"] { color: var(--bad); border-color: #5a2d32; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .metric {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.85rem 1rem;
+    }
+
+    .metric .label {
+      display: block;
+      color: var(--muted);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.35rem;
+    }
+
+    .metric .value {
+      font-size: 1.15rem;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      word-break: break-word;
+    }
+
+    .metric .value.muted { color: var(--muted); font-weight: 500; font-size: 0.95rem; }
+
+    .panels {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+    }
+
+    @media (max-width: 800px) {
+      .panels { grid-template-columns: 1fr; }
+      body { padding: 1rem; }
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.85rem 1rem;
+      min-height: 8rem;
+    }
+
+    .panel h2 {
+      margin: 0 0 0.65rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      max-height: 14rem;
+      overflow: auto;
+    }
+
+    .list li {
+      padding: 0.4rem 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.9rem;
+      line-height: 1.35;
+    }
+
+    .list li:last-child { border-bottom: none; }
+
+    .list .empty { color: var(--muted); font-size: 0.85rem; }
+
+    .list .alert { color: var(--warn); }
+    .list .action { color: var(--fg); }
+    .list .ts {
+      display: block;
+      color: var(--muted);
+      font-size: 0.7rem;
+      margin-top: 0.15rem;
+    }
+
+    details.raw {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.65rem 1rem;
+    }
+
+    details.raw summary {
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      user-select: none;
+    }
+
+    details.raw pre {
+      margin: 0.65rem 0 0;
+      overflow: auto;
+      max-height: 20rem;
+      font-size: 0.78rem;
+      line-height: 1.4;
+      color: var(--fg);
+    }
+
+    footer {
+      margin-top: 1.25rem;
+      color: var(--muted);
+      font-size: 0.75rem;
+      letter-spacing: 0.03em;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Mission Control</h1>
+    <div id="status">Starting…</div>
+    <div id="mode" class="mode-badge" data-mode="">—</div>
+  </header>
+
+  <section class="controls" aria-label="Autopilot controls">
+    <span class="ctrl-label">Operator</span>
+    <span id="ctrl-status" class="ctrl-status" data-state="">control: —</span>
+    <button type="button" id="btn-pause" class="warn">Pause autopilot</button>
+    <button type="button" id="btn-resume" class="ok">Resume</button>
+    <button type="button" id="btn-safe" class="danger">Force SAFE</button>
+    <button type="button" id="btn-clear-safe">Clear SAFE</button>
+    <button type="button" id="btn-halt" class="danger">Halt</button>
+    <button type="button" id="btn-clear-halt">Clear Halt</button>
+  </section>
+
+  <section class="grid" id="metrics" aria-label="Key metrics">
+    <div class="metric"><span class="label">Equity</span><span class="value muted" data-k="equity">—</span></div>
+    <div class="metric"><span class="label">Accounts</span><span class="value muted" data-k="account_count">—</span></div>
+    <div class="metric"><span class="label">Account snap</span><span class="value muted" data-k="account_snap">—</span></div>
+    <div class="metric"><span class="label">Risk mode</span><span class="value muted" data-k="risk_mode">—</span></div>
+    <div class="metric"><span class="label">Unified mode</span><span class="value muted" data-k="unified_mode">—</span></div>
+    <div class="metric"><span class="label">Liquidity</span><span class="value muted" data-k="liquidity">—</span></div>
+    <div class="metric"><span class="label">Anomalies</span><span class="value muted" data-k="anomalies">—</span></div>
+    <div class="metric"><span class="label">Learning</span><span class="value muted" data-k="learning_meta_mode">—</span></div>
+    <div class="metric"><span class="label">Exec route</span><span class="value muted" data-k="exec_route">—</span></div>
+    <div class="metric"><span class="label">Slippage</span><span class="value muted" data-k="slippage">—</span></div>
+    <div class="metric"><span class="label">Exec size</span><span class="value muted" data-k="exec_size">—</span></div>
+    <div class="metric"><span class="label">Risk-off</span><span class="value muted" data-k="risk_off">—</span></div>
+    <div class="metric"><span class="label">Autopilot</span><span class="value muted" data-k="autopilot">—</span></div>
+    <div class="metric"><span class="label">Autonomy</span><span class="value muted" data-k="autonomy_mode">—</span></div>
+    <div class="metric"><span class="label">MARL</span><span class="value muted" data-k="marl_status">—</span></div>
+    <div class="metric"><span class="label">Simulation</span><span class="value muted" data-k="simulation_status">—</span></div>
+  </section>
+
+  <section class="panels">
+    <div class="panel">
+      <h2>Alerts</h2>
+      <ul class="list" id="alerts"><li class="empty">Waiting for mission_stream…</li></ul>
+    </div>
+    <div class="panel">
+      <h2>Recent actions / events</h2>
+      <ul class="list" id="events"><li class="empty">No events yet</li></ul>
+    </div>
+  </section>
+
+  <details class="raw">
+    <summary>Raw snapshot</summary>
+    <pre id="raw">Waiting for mission_stream…</pre>
+  </details>
+
+  <footer id="footer">broker: —</footer>
+
+  <script src="/static/dashboard.js"></script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+# Optional torch image for marl_service / simulation_service.
+# Default Dockerfile stays torch-free. Build via compose overlay:
+#   docker compose -f docker-compose.yml -f docker-compose.torch.yml --profile torch up -d --build
+#
+# Light deps are installed in stage `light`, then CPU torch is layered on top.
+
+FROM python:3.11-slim AS light
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY prop_algo/deploy/requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt \
+    && rm /tmp/requirements.txt
+
+COPY prop_algo/ /app/
+
+ENV PYTHONPATH=/app
+ENV REDIS_HOST=redis
+ENV REDIS_PORT=6379
+ENV PYTHONUNBUFFERED=1
+
+FROM light AS torch
+
+COPY prop_algo/deploy/requirements-torch.txt /tmp/requirements-torch.txt
+# Prefer official CPU wheels. Plain `pip install torch` on Linux often pulls CUDA.
+RUN pip install --no-cache-dir \
+      --index-url https://download.pytorch.org/whl/cpu \
+      -r /tmp/requirements-torch.txt \
+    && rm /tmp/requirements-torch.txt
+
+CMD ["python", "-m", "services.marl_service.main"]

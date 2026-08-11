@@ -1,0 +1,12 @@
+# Grafana datasource provisioning.
+# Compose metrics profile: Prometheus service on the compose network.
+# k8s uses an inline ConfigMap in k8s/grafana.yaml (prometheus-operated URL).
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    uid: prometheus
+    isDefault: true
+    editable: true
+    url: http://prometheus:9090
