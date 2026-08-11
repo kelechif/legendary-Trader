@@ -1,4 +1,7 @@
-from infra.modes import NORMAL, SAFE_MODE
+try:
+    from infra.modes import NORMAL, SAFE_MODE
+except ImportError:  # package import as prop_algo.* (pytest / non-Docker)
+    from prop_algo.infra.modes import NORMAL, SAFE_MODE
 
 from .telemetry_bus import TelemetryBus
 from .mission_state import MissionState
