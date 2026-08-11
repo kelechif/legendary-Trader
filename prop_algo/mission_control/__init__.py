@@ -1,3 +1,12 @@
+from .control_state import (
+    control_blocks_autopilot,
+    get_control_state,
+    pause_autopilot,
+    resume_autopilot,
+    set_control_state,
+    set_force_safe,
+    set_trading_halt,
+)
 from .global_controller import GlobalController
 from .mission_alerts import generate_alerts
 from .mission_controller import apply_mission_actions
@@ -16,4 +25,11 @@ __all__ = [
     "MissionControlEngine",
     "GlobalController",
     "SafetyLayer",
+    "get_control_state",
+    "set_control_state",
+    "pause_autopilot",
+    "resume_autopilot",
+    "set_force_safe",
+    "set_trading_halt",
+    "control_blocks_autopilot",
 ]

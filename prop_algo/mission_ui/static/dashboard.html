@@ -52,6 +52,62 @@
     #status[data-state="warn"] { color: var(--warn); }
     #status[data-state="bad"] { color: var(--bad); }
 
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem 0.65rem;
+      margin-bottom: 1.25rem;
+      padding: 0.65rem 0.85rem;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+
+    .controls .ctrl-label {
+      color: var(--muted);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-right: 0.25rem;
+    }
+
+    .controls .ctrl-status {
+      color: var(--muted);
+      font-size: 0.85rem;
+      font-variant-numeric: tabular-nums;
+      min-width: 10rem;
+    }
+
+    .controls .ctrl-status[data-state="paused"],
+    .controls .ctrl-status[data-state="halt"],
+    .controls .ctrl-status[data-state="safe"] { color: var(--warn); }
+
+    .controls .ctrl-status[data-state="running"] { color: var(--ok); }
+
+    .controls button {
+      appearance: none;
+      border: 1px solid var(--border);
+      background: var(--chip);
+      color: var(--fg);
+      border-radius: 4px;
+      padding: 0.35rem 0.75rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+    }
+
+    .controls button:hover { border-color: #3d4f66; }
+    .controls button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .controls button.danger { border-color: #5a2d32; color: var(--bad); }
+    .controls button.warn { border-color: #5a4a2d; color: var(--warn); }
+    .controls button.ok { border-color: #2d5a45; color: var(--ok); }
+
     .mode-badge {
       margin-left: auto;
       padding: 0.25rem 0.7rem;
@@ -199,6 +255,15 @@
     <div id="status">Starting…</div>
     <div id="mode" class="mode-badge" data-mode="">—</div>
   </header>
+
+  <section class="controls" aria-label="Autopilot controls">
+    <span class="ctrl-label">Operator</span>
+    <span id="ctrl-status" class="ctrl-status" data-state="">control: —</span>
+    <button type="button" id="btn-pause" class="warn">Pause autopilot</button>
+    <button type="button" id="btn-resume" class="ok">Resume</button>
+    <button type="button" id="btn-safe" class="danger">Force SAFE</button>
+    <button type="button" id="btn-clear-safe">Clear SAFE</button>
+  </section>
 
   <section class="grid" id="metrics" aria-label="Key metrics">
     <div class="metric"><span class="label">Equity</span><span class="value muted" data-k="equity">—</span></div>

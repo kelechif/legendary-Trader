@@ -4,6 +4,7 @@
 Checks:
   - Redis PING
   - Mission UI HTTP 200
+  - Mission UI ``GET /api/control`` returns control-plane JSON
   - WebSocket delivers a mission_stream payload with an ``adapter`` field
   - Optional: Redis stream lengths for core + optional torch streams
 
@@ -108,6 +109,40 @@ def check_http(url: str, timeout: float) -> bool:
             last_err = exc
         time.sleep(1)
     _fail(f"Mission UI HTTP {url}: {last_err}")
+    return False
+
+
+def check_control_api(ui_url: str, timeout: float) -> bool:
+    """GET /api/control — operator control plane must respond with flags."""
+    url = ui_url.rstrip("/") + "/api/control"
+    deadline = time.time() + timeout
+    last_err: Exception | None = None
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen(url, timeout=5) as resp:
+                code = resp.getcode()
+                body = resp.read().decode("utf-8", errors="replace")
+                if code != 200:
+                    last_err = RuntimeError(f"HTTP {code}")
+                    time.sleep(1)
+                    continue
+                data = json.loads(body)
+                for key in ("autopilot_paused", "trading_halt", "force_safe"):
+                    if key not in data:
+                        last_err = RuntimeError(f"missing key {key}")
+                        break
+                else:
+                    _ok(
+                        f"control API {url} "
+                        f"paused={data['autopilot_paused']} "
+                        f"halt={data['trading_halt']} "
+                        f"safe={data['force_safe']}"
+                    )
+                    return True
+        except Exception as exc:
+            last_err = exc
+        time.sleep(1)
+    _fail(f"control API {url}: {last_err}")
     return False
 
 
@@ -233,6 +268,7 @@ def main(argv: list[str] | None = None) -> int:
     results = [
         check_redis(args.redis_host, args.redis_port),
         check_http(ui + "/", args.timeout),
+        check_control_api(ui, args.timeout),
         check_ws(ws_url, args.timeout),
     ]
     if args.check_streams or args.torch_streams:

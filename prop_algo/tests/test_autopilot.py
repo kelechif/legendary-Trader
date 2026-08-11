@@ -15,7 +15,25 @@ from prop_algo.trading.autopilot.autopilot_engine import (
 from prop_algo.trading.execution.execution_optimizer import ExecutionOptimizer
 
 
+_CTRL_CLEAR = {
+    "autopilot_paused": False,
+    "trading_halt": False,
+    "force_safe": False,
+}
+
+
 class TestAutopilot(unittest.TestCase):
+    def setUp(self):
+        # Isolate from live Redis / file control plane written by Mission UI.
+        self._ctrl = mock.patch(
+            "prop_algo.trading.autopilot.autopilot_engine.get_control_state",
+            return_value=dict(_CTRL_CLEAR),
+        )
+        self._ctrl.start()
+
+    def tearDown(self):
+        self._ctrl.stop()
+
     def test_should_trade_allows_when_enabled(self):
         with mock.patch.dict(os.environ, {"AUTOPILOT_ENABLED": "1"}, clear=False):
             self.assertTrue(AutopilotEngine().should_trade())

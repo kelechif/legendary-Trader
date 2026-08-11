@@ -60,8 +60,29 @@ docker compose down
 - `BROKER_ADAPTER=mock` (compose/k8s default) — see Brokers below.
 - `NEURAL_EXECUTION=1|0` (compose default `1` on `execution_service`) — optional neural/heuristic execution advice. When enabled, `execution_service` publishes `route` / `slippage` / `volatility` / `size` on `execution_stream` (Mission UI exec tiles). Works without torch via heuristics; set `NEURAL_MODEL_DIR` to load `route.pt` / `slippage.pt` / `volatility.pt` / `sizing.pt` when torch is available. Set `0` to disable.
 - `RISK_OFF_ENABLED=1|0` (compose/k8s default `1`) — `risk_service` evaluates `RiskOffEngine` from account equity/balance and publishes `risk_off` on `risk_stream`. `execution_service` zeros size / skips orders when risk-off is active or unified mode is `SAFE_MODE`, and publishes `risk_off` / `blocked` / `block_reason` on `execution_stream` (Mission UI **Risk-off** tile + alert). Mock equity wobble (±50) stays above the −100 drawdown trip, so the stack remains tradeable unless SAFE_MODE or a real drawdown hits. Set `0` to disable the gate.
-- `AUTOPILOT_ENABLED=1|0` (compose/k8s default `1`) — `AutopilotEngine` gates strategy→execution in `execution_service`. When off (`0`) or paused (`AUTOPILOT_PAUSED=1`, gov `HALT`, `SAFE_MODE`, or active risk-off), size is zeroed and no new orders are placed; `autopilot` / `blocked` / `block_reason` are published on `execution_stream` (Mission UI **Autopilot** tile + alert). Strategy still publishes signals; the order gate lives in execution. Set `0` to force autopilot off (no autonomous orders).
+- `AUTOPILOT_ENABLED=1|0` (compose/k8s default `1`) — `AutopilotEngine` gates strategy→execution in `execution_service`. When off (`0`) or paused (`AUTOPILOT_PAUSED=1`, Mission Control shared state, gov `HALT`, `SAFE_MODE`, or active risk-off), size is zeroed and no new orders are placed; `autopilot` / `blocked` / `block_reason` are published on `execution_stream` (Mission UI **Autopilot** tile + alert). Strategy still publishes signals; the order gate lives in execution. Set `0` to force autopilot off (no autonomous orders).
 - Image `PYTHONPATH=/app` so `core`, `infra`, `trading`, `risk`, `learning`, `services`, `mission_ui`, `autonomy`, `neural_execution`, and `agents` imports resolve.
+
+### Operator control plane (pause / resume)
+
+Mission UI exposes an **auth-free** local control API (compose only — do not expose
+port 8080 to untrusted networks without a reverse-proxy auth layer):
+
+| Method | Path | Effect |
+|--------|------|--------|
+| `GET` | `/api/control` | Current flags (`autopilot_paused`, `trading_halt`, `force_safe`) |
+| `POST` | `/api/control/autopilot/pause` | Pause autopilot |
+| `POST` | `/api/control/autopilot/resume` | Resume autopilot |
+| `POST` | `/api/control/safe` | Body `{"active": true\|false}` — force / clear SAFE note |
+| `POST` | `/api/control/halt` | Body `{"active": true\|false}` — trading halt flag |
+
+State is persisted in Redis key `mission:control` (override with
+`MISSION_CONTROL_REDIS_KEY`) and mirrored to `state/control.json` when the
+filesystem is writable. `execution_service` / `AutopilotEngine` re-read this each
+cycle (in addition to env `AUTOPILOT_PAUSED`), so operators can pause/resume
+without restarting containers. The Mission UI header row has **Pause / Resume /
+Force SAFE / Clear SAFE** buttons; results show in the connection/status area
+and the operator control strip.
 
 ### UI
 
@@ -69,7 +90,7 @@ Open [http://127.0.0.1:8080](http://127.0.0.1:8080) after `mission_ui` is up.
 
 The dashboard WebSocket is same-origin (`ws://<host>:8080/ws`) and streams the latest
 `mission_stream` snapshot. The UI shows mode, key metrics, alerts/events, connection
-state, and broker adapter mode in the footer (raw JSON remains under a collapsible section).
+state, operator pause/resume controls, and broker adapter mode in the footer (raw JSON remains under a collapsible section).
 When torch/autonomy publishers are up, optional **Autonomy / MARL / Simulation** tiles
 populate from fields folded into `mission_stream`.
 Image needs `websockets` so uvicorn can upgrade `/ws`.

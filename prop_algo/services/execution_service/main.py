@@ -82,10 +82,19 @@ def main():
         f"{'on' if RiskOffEngine.enabled() else 'off'}",
         flush=True,
     )
+    ctrl = AutopilotEngine.control_state()
+    ctrl_note = ""
+    if ctrl.get("trading_halt"):
+        ctrl_note = " control:trading_halt"
+    elif ctrl.get("autopilot_paused"):
+        ctrl_note = " control:paused"
+    elif ctrl.get("force_safe"):
+        ctrl_note = " control:force_safe"
     print(
         f"execution_service autopilot="
         f"{'on' if AutopilotEngine.enabled() else 'off'}"
-        f"{' paused' if AutopilotEngine.env_paused() else ''}",
+        f"{' paused' if AutopilotEngine.env_paused() else ''}"
+        f"{ctrl_note}",
         flush=True,
     )
 
