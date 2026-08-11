@@ -1,0 +1,78 @@
+# Copy to config/local.yaml for Moomoo large-cap daily trend trading
+#
+# cp config/equity.yaml.example config/local.yaml
+
+market_data:
+  provider: moomoo
+  opend_host: 127.0.0.1
+  opend_port: 11111
+  kline_years: 10
+  fetch_delay_sec: 0.35
+  fetch_retries: 3
+  fetch_retry_delay_sec: 1.5
+
+trading:
+  mode: equity
+  broker: moomoo
+  trd_market: US
+  env: SIMULATE
+  enabled: true
+  safe_mode: true          # log-only; set false to send OpenD SIMULATE orders
+  max_positions: 5
+  max_exposure_pct: 0.50
+  risk_per_trade_pct: 0.01
+  slippage_bps: 5
+  commission: 1.0
+  # Margin safety (recommended when broker: moomoo, safe_mode: false)
+  simulate_acc_type: CASH   # prefer SIMULATE cash account; falls back to MARGIN
+  # simulate_acc_id: 1234567  # optional explicit SIMULATE account override
+  min_buying_power: 1000    # block BUY if power below this (or use min_power_pct)
+  # min_power_pct: 0.05     # alternative: keep this fraction of total_assets as reserve
+  drawdown_halt_pct: 12.0   # stop new entries when NAV drawdown from peak exceeds this
+  regime:
+    entry_allowed: [BULL]
+    block_bear_entries: true
+
+# Universe: top 100 US large caps by market cap (via Moomoo screener)
+universe:
+  source: moomoo_screener
+  market: US
+  limit: 100
+  min_market_cap_usd: 20000000000
+  max_age_days: 7
+  cache_file: data/universe.json
+  fallback_file: config/universe_us_large_cap.yaml
+
+# Optional static override — ignored when universe.source is moomoo_screener
+# assets:
+#   - US.AAPL
+
+initial_equity: 100000.0
+engine_interval_sec: 3600
+
+candle_timeframes:
+  - 1d
+
+price_history_limit: 500
+candle_history_limit: 300
+
+strategies:
+  InstitutionalTrend:
+    ema_fast: 10
+    ema_slow: 20
+    rsi_len: 14
+    atr_len: 14
+    rsi_regime_min: 45
+    rsi_regime_max: 65
+    rsi_entry_max: 70
+
+logging:
+  level: INFO
+  file: logs/platform.log
+
+metrics:
+  enabled: true
+
+alerts:
+  enabled: true
+  drawdown_threshold_pct: 15.0

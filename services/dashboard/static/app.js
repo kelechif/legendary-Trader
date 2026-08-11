@@ -152,6 +152,32 @@ function renderStatusBar(data, health) {
         `<span class="badge">Strategy: ${data.strategy}</span>`;
 }
 
+async function refreshMissionUiLink() {
+    const link = document.getElementById("missionUiLink");
+    const badge = document.getElementById("missionUiBadge");
+    if (!link || !badge) return;
+    try {
+        const res = await fetch("/api/links");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const mission = data.mission_ui || {};
+        if (mission.url) link.href = mission.url;
+        if (mission.reachable) {
+            badge.textContent = "online";
+            badge.className = "badge badge-ok";
+            link.title = "Open prop_algo Mission Control";
+        } else {
+            badge.textContent = "offline";
+            badge.className = "badge badge-warn";
+            link.title = mission.hint || "Start prop_algo deploy compose to use Mission UI";
+        }
+    } catch (_) {
+        badge.textContent = "offline";
+        badge.className = "badge badge-warn";
+        link.title = "Cannot probe Mission UI — is the dashboard API up?";
+    }
+}
+
 function renderPortfolio(portfolio) {
     const openCount = portfolio.holdings.filter(h => h.position !== 0).length;
     let summary = `
@@ -520,4 +546,6 @@ async function update() {
 
 loadStrategies();
 setInterval(update, 2000);
+setInterval(refreshMissionUiLink, 10000);
 update();
+refreshMissionUiLink();

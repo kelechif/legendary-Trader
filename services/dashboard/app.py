@@ -15,10 +15,32 @@ from services.training_engine.universe_backtest import run_backtest_universe
 from services.training_engine.wfo import run_walk_forward
 
 import os
+from urllib.error import URLError
+from urllib.request import Request, urlopen
 
 _dashboard_dir = os.path.dirname(os.path.abspath(__file__))
 _DASHBOARD_CANDLE_LIMIT = 120
 _DASHBOARD_PRICE_LIMIT = 120
+_DEFAULT_MISSION_UI_URL = "http://127.0.0.1:8080/"
+
+
+def _mission_ui_url() -> str:
+    raw = (os.environ.get("MISSION_UI_URL") or _DEFAULT_MISSION_UI_URL).strip()
+    if not raw:
+        raw = _DEFAULT_MISSION_UI_URL
+    return raw if raw.endswith("/") else raw + "/"
+
+
+def _probe_mission_ui(url: str, timeout: float = 1.5) -> dict:
+    try:
+        req = Request(url, headers={"User-Agent": "quant-platform-dashboard/1.0"})
+        with urlopen(req, timeout=timeout) as resp:
+            code = getattr(resp, "status", None) or resp.getcode()
+            return {"reachable": 200 <= int(code) < 500, "status_code": int(code)}
+    except URLError as exc:
+        return {"reachable": False, "error": getattr(exc, "reason", None) or str(exc)}
+    except Exception as exc:  # noqa: BLE001 — surface probe failure to UI
+        return {"reachable": False, "error": str(exc)}
 
 
 def _trim_series(items, limit: int):
@@ -353,5 +375,27 @@ def create_app():
     @app.route("/api/alerts")
     def api_alerts():
         return jsonify({"alerts": alerts.get_recent(50), "config": alerts.get_config()})
+
+    @app.route("/api/links")
+    def api_links():
+        """Cross-console links (Mission UI) with a light reachability probe."""
+        url = _mission_ui_url()
+        probe = _probe_mission_ui(url)
+        return jsonify(
+            {
+                "mission_ui": {
+                    "url": url,
+                    "label": "Mission UI",
+                    "reachable": bool(probe.get("reachable")),
+                    "status_code": probe.get("status_code"),
+                    "error": probe.get("error"),
+                    "hint": (
+                        "Open when prop_algo compose mission_ui is up "
+                        "(default http://127.0.0.1:8080/). "
+                        "Override with MISSION_UI_URL."
+                    ),
+                }
+            }
+        )
 
     return app

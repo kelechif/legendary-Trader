@@ -1,0 +1,133 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Quant Platform Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body id="body">
+    <header class="header">
+        <div class="header-top">
+            <h1>Quant Platform</h1>
+            <nav class="header-links" aria-label="Related consoles">
+                <a id="missionUiLink" class="header-link" href="http://127.0.0.1:8080/" target="_blank" rel="noopener noreferrer">
+                    Mission UI
+                    <span id="missionUiBadge" class="badge badge-warn">checking</span>
+                </a>
+            </nav>
+        </div>
+        <div id="statusBar" class="status-bar"></div>
+        <div class="controls">
+            <label>Strategy
+                <select id="strategySelect"></select>
+            </label>
+            <label>Asset
+                <select id="assetSelect"></select>
+            </label>
+            <label>Timeframe
+                <select id="timeframeSelect">
+                    <option value="1d">1d</option>
+                    <option value="1m">1m</option>
+                    <option value="5m">5m</option>
+                    <option value="15m">15m</option>
+                    <option value="1h">1h</option>
+                </select>
+            </label>
+            <span id="strategyLabel"></span>
+        </div>
+    </header>
+
+    <section class="row">
+        <div class="panel portfolio-panel">
+            <h3>Portfolio</h3>
+            <div id="portfolioSummary" class="summary-grid"></div>
+            <table id="portfolioTable" class="data-table">
+                <thead><tr><th>Asset</th><th>Position</th><th>Shares</th><th>Price</th><th>Value</th><th>Alloc %</th><th>Trades</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <div class="panel">
+            <h3>Universe Signals</h3>
+            <div id="signalSummary" class="summary-grid"></div>
+            <table id="signalTable" class="data-table">
+                <thead><tr><th>Asset</th><th>Signal</th><th>Score</th><th>RSI</th><th>Regime</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <div class="panel">
+            <h3>Performance Metrics</h3>
+            <div id="perfPortfolio" class="metric-grid"></div>
+            <div id="perfAssets" class="metric-assets"></div>
+        </div>
+    </section>
+
+    <section class="row">
+        <div class="panel">
+            <h3>Strategy Parameters</h3>
+            <form id="paramsForm" class="params-form"></form>
+            <button id="saveParams" type="button">Save Parameters</button>
+        </div>
+        <div class="panel">
+            <h3>Alerts</h3>
+            <div id="alertConfig" class="alert-config"></div>
+            <div id="alertLog" class="alert-log"></div>
+        </div>
+    </section>
+
+    <section class="row">
+        <div class="panel chart-panel">
+            <h3 id="priceTitle">Price</h3>
+            <canvas id="priceChart"></canvas>
+        </div>
+        <div class="panel chart-panel">
+            <h3 id="candleTitle">Candles</h3>
+            <canvas id="candleCanvas" class="candle-canvas"></canvas>
+        </div>
+    </section>
+
+    <section class="row" id="orderBookSection">
+        <div class="panel">
+            <h3>Order Book</h3>
+            <div class="orderbook-grid">
+                <div><h4>Bids</h4><table id="bidsTable" class="data-table"><thead><tr><th>Price</th><th>Size</th></tr></thead><tbody></tbody></table></div>
+                <div><h4>Asks</h4><table id="asksTable" class="data-table"><thead><tr><th>Price</th><th>Size</th></tr></thead><tbody></tbody></table></div>
+            </div>
+        </div>
+        <div class="panel">
+            <h3>Equity Curves</h3>
+            <canvas id="equityChart"></canvas>
+        </div>
+    </section>
+
+    <section class="row">
+        <div class="panel">
+            <h3>Trade Log</h3>
+            <div id="tradeLog" class="scroll-log"></div>
+        </div>
+        <div class="panel">
+            <h3>Backtest</h3>
+            <div class="backtest-controls">
+                <button id="runBacktest">Run Backtest (Current Asset)</button>
+                <button id="runUniverseBacktest">Run Universe Backtest</button>
+                <button id="runWfo">Run Walk-Forward</button>
+                <button id="applyWfoParams" type="button" disabled>Apply WFO Params</button>
+                <span id="backtestStatus"></span>
+            </div>
+            <div id="wfoResults" class="metric-assets"></div>
+            <div id="backtestContributors" class="metric-assets"></div>
+            <div id="backtestResults" class="metric-grid"></div>
+            <canvas id="backtestChart"></canvas>
+        </div>
+    </section>
+
+    <section class="row">
+        <div class="panel">
+            <h3>System Metrics</h3>
+            <pre id="metricsLog" class="metrics-pre"></pre>
+        </div>
+    </section>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
