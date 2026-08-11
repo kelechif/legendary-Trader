@@ -1,0 +1,13 @@
+# Grafana dashboard provider — loads JSON from /var/lib/grafana/dashboards.
+apiVersion: 1
+providers:
+  - name: prop_algo
+    orgId: 1
+    folder: prop_algo
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

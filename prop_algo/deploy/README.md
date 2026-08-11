@@ -223,7 +223,8 @@ $env:CTRADER_BASE_URL = "https://your-gateway.example"
 | `light-services.yaml` | ConfigMap + Deployments/Services for compose app services |
 | `mission-ui.yaml` | UI on `:8080` (NodePort `30080`) |
 | `kustomization.yaml` | Applies the light path above |
-| `grafana.yaml` | Optional Grafana (NodePort `30300`) |
+| `grafana.yaml` | Optional Grafana (NodePort `30300`) + datasource/provider ConfigMaps |
+| `../grafana/prop_algo-overview.json` | Overview dashboard (equity, liquidity, anomalies, mode, latency, fitness) |
 | `prometheus.yaml` / `servicemonitor.yaml` | Optional; need **prometheus-operator** CRDs |
 
 ### Build and load the image
@@ -265,12 +266,31 @@ kubectl -n prop-algo port-forward svc/mission-ui 8080:8080
 Optional monitoring:
 
 ```bash
+# Dashboard ConfigMap (JSON source of truth: ../grafana/prop_algo-overview.json)
+kubectl -n prop-algo create configmap grafana-dashboard-prop-algo \
+  --from-file=prop_algo-overview.json=../grafana/prop_algo-overview.json \
+  --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -f grafana.yaml
 # only if prometheus-operator is installed:
 kubectl apply -f prometheus.yaml -f servicemonitor.yaml
 ```
 
-Metrics Services are labeled `app: prop-service` with port name `metrics` (ports 8000–8004 as in compose).
+Metrics Services are labeled `app: prop-service` with port name `metrics` (ports 8000–8004 as in compose). Grafana provisions a Prometheus datasource at `http://prometheus-operated.prop-algo.svc:9090` and loads **prop_algo overview** (folder `prop_algo`). Open NodePort `30300` (admin / admin).
+
+### Grafana dashboard (metrics)
+
+Source: `prop_algo/deploy/grafana/prop_algo-overview.json` — panels use only gauges from `infra.metrics.Metrics` plus Prometheus `up`:
+
+| Metric | Labels | Set by |
+|--------|--------|--------|
+| `equity` | `account` | `market_data_service` `:8000` |
+| `liquidity` | — | `risk_service` `:8001` |
+| `anomaly_count` | — | `risk_service` `:8001` |
+| `exec_latency` | — | `execution_service` `:8002` |
+| `learning_fitness` | `strategy` | `learning_service` `:8003` |
+| `unified_mode` | — | `unified_core_service` `:8004` (0=NORMAL … 3=EVOLUTION) |
+
+**Local Grafana (compose metrics, no k8s):** run your own Prometheus scraping `host.docker.internal:8000-8004` (or the published compose ports), then **Dashboards → Import → Upload** `prop_algo/deploy/grafana/prop_algo-overview.json`. Point the datasource UID `prometheus` at that Prometheus (or rename the dashboard datasource after import). Provisioning snippets for reference: `grafana/datasources.yaml`, `grafana/dashboards.yaml`. Compose does **not** add a Grafana/Prometheus profile (keeps the 14-service stack lean).
 
 ### Roll out a single service
 
