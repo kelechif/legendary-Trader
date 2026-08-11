@@ -16,6 +16,7 @@ from neural_execution import NeuralExecutionEngine
 from trading.autopilot import AutopilotEngine
 from trading.autopilot import execution_gate as autopilot_gate
 from trading.execution.execution_optimizer import ExecutionOptimizer
+from trading.multi_account.manager import MultiAccountManager
 from trading.risk_off import RiskOffEngine, execution_gate, merge_risk_factors
 
 
@@ -63,8 +64,16 @@ def _combine_blocks(risk_blocked, risk_reason, ap_blocked, ap_reason):
 def main():
     registry = Registry()
     kind = register_broker_accounts(registry)
+    multi = MultiAccountManager(registry)
     print(f"execution_service broker adapter={kind}", flush=True)
-    exec_engine = ExecutionOptimizer(registry)
+    print(
+        f"execution_service multi_account="
+        f"{'on' if multi.enabled() else 'off'} "
+        f"accounts={multi.account_count()} "
+        f"active={','.join(multi.active_accounts()) or '-'}",
+        flush=True,
+    )
+    exec_engine = ExecutionOptimizer(registry, multi_account=multi)
     bus = Stream()
     metrics = Metrics(8002)
     autopilot_engine = AutopilotEngine()
@@ -179,6 +188,7 @@ def main():
             "backend": advice.get("backend", "disabled"),
             "neural_enabled": bool(neural_on),
             "orders": orders,
+            "multi_account": multi.summary(),
             "risk_off": {
                 "enabled": bool(risk_off.get("enabled", RiskOffEngine.enabled())),
                 "active": off_active,

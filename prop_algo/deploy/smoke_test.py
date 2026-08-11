@@ -172,13 +172,20 @@ def check_ws(ws_url: str, timeout: float) -> bool:
             mode = payload.get("global_mode") or (payload.get("dashboard") or {}).get(
                 "risk_mode"
             )
+            multi = payload.get("multi_account") or {}
+            dash = payload.get("dashboard") or {}
+            account_count = multi.get("account_count")
+            if account_count is None:
+                account_count = dash.get("account_count")
             _ok(
                 f"WebSocket mission payload adapter={payload.get('adapter')!r} "
-                f"mode={mode!r}"
+                f"mode={mode!r} accounts={account_count!r}"
             )
+            if account_count is not None and int(account_count) < 1:
+                raise ValueError(f"expected account_count >= 1, got {account_count}")
             extras = [
                 k
-                for k in ("autonomy", "marl", "simulation")
+                for k in ("autonomy", "marl", "simulation", "multi_account")
                 if payload.get(k) is not None
             ]
             if extras:

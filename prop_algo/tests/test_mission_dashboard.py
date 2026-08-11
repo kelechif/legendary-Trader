@@ -42,9 +42,30 @@ class TestMissionDashboard(unittest.TestCase):
         self.assertEqual(dash["liquidity"], 0.8)
         self.assertEqual(dash["learning_meta_mode"], "EXPLOIT")
         self.assertEqual(dash["adapter"], "mock")
+        self.assertEqual(dash["account_count"], 1)
+        self.assertIn("ACC1", dash["accounts"])
         self.assertEqual(dash["autonomy_mode"], "NORMAL")
         self.assertEqual(dash["marl_status"], "agents=2")
         self.assertEqual(dash["simulation_status"], "running (12 steps)")
+
+    def test_build_dashboard_multi_account_fields(self):
+        snap = _base_snapshot(
+            market={
+                "ACC1": {"equity": 10100, "balance": 10000},
+                "ACC2": {"equity": 9900, "balance": 9800},
+            },
+            multi_account={
+                "enabled": True,
+                "account_count": 2,
+                "accounts": {
+                    "ACC1": {"name": "ACC1", "equity": 10100, "balance": 10000},
+                    "ACC2": {"name": "ACC2", "equity": 9900, "balance": 9800},
+                },
+            },
+        )
+        dash = build_dashboard(snap)
+        self.assertEqual(dash["account_count"], 2)
+        self.assertEqual(set(dash["accounts"]), {"ACC1", "ACC2"})
 
     def test_build_dashboard_falls_back_to_first_market_account(self):
         snap = _base_snapshot(

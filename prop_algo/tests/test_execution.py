@@ -38,6 +38,16 @@ class TestExecution(unittest.TestCase):
         )
         self.assertEqual(len(results), 2)
         self.assertTrue(all(row["status"] == "FILLED" for row in results))
+        self.assertEqual({row["account"] for row in results}, {"A", "B"})
+
+    def test_execution_order_includes_account(self):
+        r = Registry()
+        r.register_account("A", MockAdapter("A"))
+        opt = ExecutionOptimizer(r)
+        signals = {("A", "EURUSD"): {"trend": {"signal": "BUY"}}}
+        res = opt.run(signals, {"A": 1.0})
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0]["account"], "A")
 
     def test_autopilot_should_trade(self):
         import os

@@ -17,6 +17,7 @@ x-prop-algo-torch: &prop_algo_torch
     PYTHONPATH: /app
     PYTHONUNBUFFERED: "1"
     BROKER_ADAPTER: mock
+    MULTI_ACCOUNT_ENABLED: "1"
   depends_on:
     redis:
       condition: service_healthy

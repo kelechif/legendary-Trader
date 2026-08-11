@@ -17,6 +17,7 @@ from core.logging.logger import get_logger
 from trading.strategies.engine import StrategyEngine
 from trading.risk_off.risk_off_engine import RiskOffEngine
 from trading.execution.execution_optimizer import ExecutionOptimizer
+from trading.multi_account.manager import MultiAccountManager
 from trading.autopilot.autopilot_engine import AutopilotEngine
 
 # Phase 2
@@ -48,12 +49,17 @@ def main():
     # Registry + accounts (BROKER_ADAPTER=mock|mt5|ctrader)
     registry = Registry()
     kind = register_broker_accounts(registry)
+    multi = MultiAccountManager(registry)
     log.info(f"Broker adapter={kind}")
+    log.info(
+        f"Multi-account={'on' if multi.enabled() else 'off'} "
+        f"accounts={multi.account_count()}"
+    )
 
     # Phase 1 modules
     strategy_engine = StrategyEngine(registry)
     risk_off = RiskOffEngine()
-    execution = ExecutionOptimizer(registry)
+    execution = ExecutionOptimizer(registry, multi_account=multi)
     autopilot = AutopilotEngine()
 
     # Phase 2 modules
