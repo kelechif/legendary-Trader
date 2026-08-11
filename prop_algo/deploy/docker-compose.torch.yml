@@ -1,0 +1,60 @@
+# Optional torch overlay for MARL / simulation (NOT part of the light path).
+#
+# From this directory:
+#   docker compose -f docker-compose.yml -f docker-compose.torch.yml --profile torch up -d --build
+#
+# Builds prop_algo:torch (CPU torch) and starts marl_service + simulation_service
+# on the same Redis network as the light stack.
+
+x-prop-algo-torch: &prop_algo_torch
+  build:
+    context: ../..
+    dockerfile: prop_algo/deploy/Dockerfile.torch
+  image: prop_algo:torch
+  environment: &torch_env
+    REDIS_HOST: redis
+    REDIS_PORT: "6379"
+    PYTHONPATH: /app
+    PYTHONUNBUFFERED: "1"
+    BROKER_ADAPTER: mock
+  depends_on:
+    redis:
+      condition: service_healthy
+  restart: unless-stopped
+  profiles: ["torch"]
+  healthcheck: &torch_redis_ping
+    test:
+      [
+        "CMD",
+        "python",
+        "-c",
+        "import redis; redis.Redis(host='redis', port=6379, socket_connect_timeout=2).ping()",
+      ]
+    interval: 20s
+    timeout: 5s
+    retries: 5
+    start_period: 40s
+
+services:
+  marl_service:
+    <<: *prop_algo_torch
+    environment:
+      <<: *torch_env
+      # Avoid pegging host CPU on hot mission/autonomy streams (see services.marl_service.main).
+      MARL_LOOP_SLEEP: "2"
+      MARL_TORCH_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+    command: ["python", "-m", "services.marl_service.main"]
+
+  simulation_service:
+    <<: *prop_algo_torch
+    environment:
+      <<: *torch_env
+      # Avoid pegging host CPU (see services.simulation_service.main).
+      SIMULATION_LOOP_SLEEP: "5"
+      SIMULATION_STEPS: "50"
+      SIMULATION_TORCH_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+    command: ["python", "-m", "services.simulation_service.main"]

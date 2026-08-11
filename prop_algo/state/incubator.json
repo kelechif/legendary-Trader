@@ -1,0 +1,47 @@
+{
+    "candidates": [
+        {
+            "id": "strat_0_0",
+            "params": {
+                "lookback": 32,
+                "threshold": 0.005877453011677367
+            }
+        },
+        {
+            "id": "strat_0_1",
+            "params": {
+                "lookback": 166,
+                "threshold": 0.00651032507602602
+            }
+        },
+        {
+            "id": "strat_0_2",
+            "params": {
+                "lookback": 23,
+                "threshold": 0.002865676089623119
+            }
+        },
+        {
+            "id": "strat_1_3",
+            "params": {
+                "lookback": 67,
+                "threshold": 0.009851102098971842
+            }
+        },
+        {
+            "id": "strat_1_4",
+            "params": {
+                "lookback": 26,
+                "threshold": 0.005592545059005417
+            }
+        },
+        {
+            "id": "strat_1_5",
+            "params": {
+                "lookback": 125,
+                "threshold": 0.0025551651322856033
+            }
+        }
+    ],
+    "generation": 2
+}

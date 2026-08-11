@@ -1,0 +1,9 @@
+**/.git
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.mypy_cache
+**/node_modules
+data/
+*.md
+!prop_algo/deploy/README.md

@@ -1,0 +1,21 @@
+# Optional: scrape light-path metrics Services (needs prometheus-operator).
+# Targets Services labeled app=prop-service with a named port "metrics"
+# (market-data :8000, risk :8001, execution :8002, learning :8003, unified-core :8004).
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: prop-services
+  namespace: prop-algo
+  labels:
+    team: prop
+spec:
+  namespaceSelector:
+    matchNames:
+      - prop-algo
+  selector:
+    matchLabels:
+      app: prop-service
+  endpoints:
+    - port: metrics
+      interval: 15s
+      scrapeTimeout: 5s
