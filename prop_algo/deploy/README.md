@@ -51,6 +51,41 @@ Stop:
 docker compose down
 ```
 
+### DX helpers (PowerShell / make)
+
+Thin wrappers around the same compose files and `smoke_test.py` — no new product
+behavior. On Windows, use `manage.ps1` (from repo root or `prop_algo/deploy`):
+
+```powershell
+# Light stack
+.\prop_algo\deploy\manage.ps1 up
+
+# Light + torch profile (MARL / simulation)
+.\prop_algo\deploy\manage.ps1 up-torch
+
+# Light + metrics profile (Prometheus / Grafana)
+.\prop_algo\deploy\manage.ps1 up-metrics
+
+# Light + torch + metrics
+.\prop_algo\deploy\manage.ps1 up-all
+
+.\prop_algo\deploy\manage.ps1 status   # alias: ps
+.\prop_algo\deploy\manage.ps1 smoke
+.\prop_algo\deploy\manage.ps1 smoke -CheckStreams
+.\prop_algo\deploy\manage.ps1 smoke -CheckStreams -TorchStreams
+.\prop_algo\deploy\manage.ps1 logs                 # follow, last 100 lines
+.\prop_algo\deploy\manage.ps1 logs -Tail 200 mission_ui
+.\prop_algo\deploy\manage.ps1 down
+```
+
+
+If GNU `make` is available (same directory):
+
+```bash
+make up | up-torch | up-metrics | up-all | down | status | smoke | logs
+# logs: make logs TAIL=200
+```
+
 ### Env
 
 - `REDIS_HOST` (default `redis`) and `REDIS_PORT` (default `6379`) are read by `infra.stream.Stream`.
