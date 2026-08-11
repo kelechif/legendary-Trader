@@ -10,6 +10,8 @@ Examples:
     python main.py options-chain --symbol AAPL
     python main.py options-backtest --symbol AAPL --period 2y
     python main.py options-trade --symbol AAPL --once
+    python main.py sweep --symbol AAPL MSFT NVDA --period 2y
+    python main.py sweep --metric total_return_pct --out sweep_results.csv   # sweeps the watchlist
 """
 from __future__ import annotations
 
@@ -17,6 +19,7 @@ import argparse
 import sys
 
 from trading_bot.backtest.engine import BacktestEngine
+from trading_bot.backtest.sweep import ALL_STRATEGIES, STRATEGY_LABELS, best_per_symbol, run_sweep
 from trading_bot.config import load_config
 from trading_bot.data.fetcher import DataFetcher
 from trading_bot.execution.options_trader import OptionsTradingBot
@@ -133,6 +136,43 @@ def cmd_options_backtest(args: argparse.Namespace, config: dict) -> None:
     print(f"  trades executed             : {len(result.trades)}")
 
 
+def cmd_sweep(args: argparse.Namespace, config: dict) -> None:
+    symbols = args.symbol if args.symbol else _watchlist_symbols(config)
+    strategy_names = args.strategies if args.strategies else ALL_STRATEGIES
+
+    print(f"Sweeping {len(strategy_names)} strategies x {len(symbols)} symbols "
+          f"({len(strategy_names) * len(symbols)} backtests)...")
+    print(f"Strategies: {', '.join(STRATEGY_LABELS[s] for s in strategy_names)}")
+
+    results = run_sweep(symbols, config, strategy_names=strategy_names, period=args.period)
+
+    if args.out:
+        results.to_csv(args.out, index=False)
+        print(f"\nFull results ({len(results)} rows) written to {args.out}")
+
+    errors = results[results["error"].notna()]
+    if not errors.empty:
+        print(f"\n{len(errors)} (symbol, strategy) pair(s) failed:")
+        for _, row in errors.iterrows():
+            print(f"  {row['symbol']:8s} {row['strategy']:20s} {row['error']}")
+
+    best = best_per_symbol(results, metric=args.metric)
+    if best.empty:
+        print("\nNo successful backtests to rank.")
+        return
+
+    print(f"\n===== Best strategy per symbol (by {args.metric}) =====")
+    cols = ["symbol", "strategy", "sharpe_ratio", "total_return_pct", "max_drawdown_pct",
+            "win_rate_pct", "num_trades"]
+    header = f"{'symbol':8s} {'strategy':22s} {'sharpe':>8s} {'return%':>9s} {'maxdd%':>8s} {'win%':>7s} {'trades':>7s}"
+    print(header)
+    print("-" * len(header))
+    for _, row in best[cols].iterrows():
+        print(f"{row['symbol']:8s} {STRATEGY_LABELS[row['strategy']]:22.22s} "
+              f"{row['sharpe_ratio']:>8.2f} {row['total_return_pct']:>9.2f} "
+              f"{row['max_drawdown_pct']:>8.2f} {row['win_rate_pct']:>7.1f} {row['num_trades']:>7d}")
+
+
 def cmd_options_trade(args: argparse.Namespace, config: dict) -> None:
     symbols = args.symbol if args.symbol else _watchlist_symbols(config)
     bot = OptionsTradingBot(config)
@@ -204,6 +244,23 @@ def build_parser() -> argparse.ArgumentParser:
     p_opt_trade.add_argument("--once", action="store_true", help="Run a single evaluation cycle and exit")
     p_opt_trade.add_argument("--interval", type=int, default=None, help="Seconds between cycles in loop mode")
     p_opt_trade.set_defaults(func=cmd_options_trade)
+
+    p_sweep = sub.add_parser(
+        "sweep", help="Backtest every strategy against every symbol and rank the best fit per symbol"
+    )
+    p_sweep.add_argument("--symbol", nargs="*", help="Symbols to sweep (default: config watchlist)")
+    p_sweep.add_argument("--period", default="2y", help="History window, e.g. 1y, 2y, 5y")
+    p_sweep.add_argument(
+        "--strategies", nargs="*", choices=ALL_STRATEGIES,
+        help=f"Strategies to include (default: all). Choices: {', '.join(ALL_STRATEGIES)}",
+    )
+    p_sweep.add_argument(
+        "--metric", default="sharpe_ratio",
+        choices=["sharpe_ratio", "total_return_pct", "cagr_pct", "win_rate_pct"],
+        help="Metric used to rank strategies per symbol (default: sharpe_ratio)",
+    )
+    p_sweep.add_argument("--out", default=None, help="Optional path to write the full result matrix as CSV")
+    p_sweep.set_defaults(func=cmd_sweep)
 
     return parser
 

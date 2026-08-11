@@ -44,14 +44,22 @@ Data (Yahoo Finance)  →  Indicators/Features  →  ML direction model
 - **Execution**: `trading_bot/execution/` provides a `PaperBroker` (simulated
   fills, persisted to a local JSON file), an optional `AlpacaBroker`, and an
   optional `MoomooBroker` for live/paper trading, plus a `TradingBot` loop
-  that ties everything together.
+  that ties everything together. `plan_for_evaluation()` previews the
+  risk-managed entry/stop/target for a BUY signal without submitting
+  anything; `submit_plan()` executes that exact preview; `check_exits()`
+  re-prices open positions and closes any that have breached their stored
+  stop-loss/take-profit. These three are what the dashboard's Scanner tab
+  is built on.
 - **Options**: `trading_bot/options/` turns the same directional signal into
   a long-calls/long-puts trade: `chain.py` fetches the live Yahoo Finance
   option chain, `pricing.py` is a from-scratch Black-Scholes pricer/Greeks
   calculator, `selector.py` picks the contract closest to a target delta,
   and `risk.py` sizes contracts by premium-at-risk. `OptionsTradingBot`
   (`execution/options_trader.py`) runs the paper-trading loop, sharing the
-  same `PaperBroker` account (and cash) as the equity bot.
+  same `PaperBroker` account (and cash) as the equity bot, and exposes the
+  same preview/execute/exit-monitoring trio (`plan_for_evaluation()` /
+  `submit_preview()` / `check_exits()`), plus `close_position()` for a
+  manual one-click close.
 
 ## Setup
 
@@ -123,6 +131,48 @@ Finance — only the backtest is synthetic.
 Options trading is currently **paper-only** (no live options broker is
 wired up); `broker.mode: alpaca` only applies to the equity/futures bot.
 
+### 5. Strategy sweep: which strategy fits which ticker
+
+```bash
+# Backtest every strategy against a few symbols
+python main.py sweep --symbol AAPL MSFT NVDA --period 2y
+
+# Sweep the configured watchlist, rank by total return instead of Sharpe,
+# and save the full result matrix
+python main.py sweep --metric total_return_pct --out sweep_results.csv
+
+# Restrict to specific strategies
+python main.py sweep --symbol TSLA --strategies sma_20_50 rsi_mean_reversion buy_and_hold
+```
+
+Backtests **every symbol against every strategy** and ranks them per symbol,
+so instead of assuming one strategy fits every ticker, you get a read on
+which one actually did over that ticker's own history. Seven strategies ship
+by default:
+
+| key | what it does |
+|---|---|
+| `ml_trend` | this repo's own ML model + SMA200 trend filter + RSI guard (unchanged from `backtest`) |
+| `sma_20_50` | trend-following: long while the 20-day SMA is above the 50-day |
+| `sma_50_200` | longer trend-following: the classic golden/death cross |
+| `rsi_mean_reversion` | buy oversold (RSI ≤ 30), sell overbought (RSI ≥ 70) |
+| `macd_crossover` | momentum: long while the MACD line is above its signal line |
+| `bollinger_reversion` | mean-reversion off the Bollinger Bands |
+| `buy_and_hold` | baseline — buys once and holds, for comparison |
+
+Every strategy is backtested over the *same* held-out window (the same
+train/test split the ML model uses), with the same ATR-based stop/target
+sizing, so results are directly comparable — this isn't the ML backtest
+re-run seven times with different labels, it's seven genuinely different
+entry/exit rules sharing one risk engine
+(`trading_bot/backtest/strategy_engine.py::RuleBacktester` for the six
+non-ML strategies, `trading_bot/strategy/rules.py` for their signal logic).
+A bad ticker or too little history fails that one (symbol, strategy) pair
+without aborting the rest of the sweep.
+
+Also available as the **Strategy Lab** tab in the dashboard, with the same
+options plus a color-coded heatmap of the full symbol x strategy matrix.
+
 ### Going live (optional, off by default)
 
 To route real orders through [Alpaca](https://alpaca.markets/), set
@@ -167,11 +217,43 @@ regardless of `broker.mode`.
 streamlit run dashboard.py
 ```
 
-A read-only-by-default view over the same engine: current signals for your
-watchlist, the paper account (cash, positions, option positions, recent
-trades), and both backtest types with an equity-curve chart. Viewing signals
-never places an order — that only happens if you click "Execute paper trades
-on these signals" explicitly.
+**AlphaFlow** — a read-only-by-default view over the same engine, themed via
+`.streamlit/config.toml`. Six tabs:
+
+- **Scanner** — the main console. Enter any comma-separated list of tickers
+  (defaults to the watchlist plus a broader set of liquid, optionable large
+  caps — fully editable, not limited to a fixed list), pick Stocks/Futures or
+  Options, and click **Scan**. Each symbol is evaluated by the real signal +
+  risk engine and rendered as a row: signal (BUY/SELL/HOLD or CALL/PUT),
+  price, the model's reasoning, and — for anything actionable — the exact
+  risk-managed entry/stop/target (or premium/strike/expiration for options)
+  it would trade. A **Trade** button on each actionable row submits that
+  *exact previewed* order in one click (no silent re-pricing between preview
+  and execution); an existing position shows a **Close** button instead.
+  **Check stop/target exits now** re-prices every open position and closes
+  any that have breached their stop-loss/take-profit band — this is what
+  makes the stop/target shown at entry mean something after the fact, since
+  nothing else watches positions between scans.
+- **Strategy Lab** — the dashboard front-end for `python main.py sweep` (see
+  above): pick symbols, a history window, a ranking metric, and which of the
+  seven strategies to include, then **Run sweep**. Shows the best strategy
+  per symbol as a table plus a color-coded symbol x strategy heatmap of the
+  full result matrix.
+- **Signals** — the original read-only signal table plus a bulk "execute all"
+  button, unchanged except that the button now names and gates on the actual
+  broker mode (see below).
+- **Paper Account**, **Equity Backtest**, **Options Backtest** — unchanged
+  from before.
+
+**Safety gating:** every trade button, one-click or bulk, is a separate
+explicit click. In `broker.mode: paper` (the default) that's the whole story
+— everything is simulated. In any other mode, a warning banner appears and
+every equity/futures trade button on the page stays disabled until you tick
+"I understand — enable live Trade buttons." Options trading always executes
+on its own separate paper account regardless of `broker.mode`, since no live
+options broker is wired up (see above) — sharing the same `PaperBroker` (and
+thus the same cash) as the equity bot only when the equity broker is itself
+paper.
 
 ## Configuration
 
@@ -197,7 +279,10 @@ trading_bot/
   ml/model.py              # direction-prediction model (train/predict/persist)
   strategy/signals.py      # ML + technical-filter signal generator
   strategy/risk.py         # ATR-based position sizing and risk limits
-  backtest/engine.py       # walk-forward backtester + performance metrics
+  strategy/rules.py        # indicator-only strategies (SMA/RSI/MACD/Bollinger/buy-hold)
+  backtest/engine.py       # walk-forward backtester + performance metrics (ML strategy)
+  backtest/strategy_engine.py  # same walk-forward mechanics, for the indicator-only strategies
+  backtest/sweep.py        # every strategy x every symbol -> best fit per symbol
   execution/broker.py      # PaperBroker (default) + optional AlpacaBroker/MoomooBroker
   execution/trader.py      # ties data -> model -> signal -> risk -> broker (equity/futures)
   execution/options_trader.py  # same, for options (long calls/puts)
@@ -206,7 +291,8 @@ trading_bot/
   options/selector.py       # delta-based contract selection
   options/risk.py           # premium-at-risk position sizing
   options/backtest.py       # synthetic Black-Scholes walk-forward backtest
-main.py                    # CLI: backtest / train / trade / options-chain / options-backtest / options-trade
-dashboard.py                 # Streamlit dashboard (signals, paper account, both backtests)
+main.py                    # CLI: backtest / train / trade / options-chain / options-backtest / options-trade / sweep
+dashboard.py                 # AlphaFlow Streamlit dashboard (scanner, strategy lab, signals, paper account, both backtests)
+.streamlit/config.toml       # dashboard theme
 config.yaml                 # watchlist, model, risk, options, and broker settings
 ```
