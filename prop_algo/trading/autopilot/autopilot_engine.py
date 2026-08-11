@@ -10,6 +10,17 @@ try:
 except ImportError:  # package import as prop_algo.* (pytest / non-Docker)
     from prop_algo.infra.modes import SAFE_MODE
 
+try:
+    from mission_control.control_state import (
+        control_blocks_autopilot,
+        get_control_state,
+    )
+except ImportError:
+    from prop_algo.mission_control.control_state import (
+        control_blocks_autopilot,
+        get_control_state,
+    )
+
 
 def _env_flag(name: str, default: str = "0") -> bool:
     return os.environ.get(name, default).strip().lower() in ("1", "true", "yes", "on")
@@ -21,8 +32,9 @@ class AutopilotEngine:
     ``AUTOPILOT_ENABLED=1`` (default) turns autopilot on. When off or paused,
     new orders are blocked (size=0) with a clear reason on streams.
 
-    Pause triggers: ``AUTOPILOT_PAUSED=1``, governance ``HALT``, ``SAFE_MODE``
-    (unified / gov / mission), or active risk-off.
+    Pause triggers: ``AUTOPILOT_PAUSED=1``, shared Mission Control state
+    (``autopilot_paused`` / ``trading_halt`` / ``force_safe``), governance
+    ``HALT``, ``SAFE_MODE`` (unified / gov / mission), or active risk-off.
     """
 
     @classmethod
@@ -34,6 +46,24 @@ class AutopilotEngine:
     def env_paused(cls) -> bool:
         """``AUTOPILOT_PAUSED=1`` forces a pause while enabled."""
         return _env_flag("AUTOPILOT_PAUSED", "0")
+
+    @classmethod
+    def control_state(cls) -> dict[str, Any]:
+        """Shared Mission Control plane (Redis / file); safe defaults on error."""
+        try:
+            return get_control_state()
+        except Exception:
+            return {
+                "autopilot_paused": False,
+                "trading_halt": False,
+                "force_safe": False,
+            }
+
+    @classmethod
+    def control_paused(cls) -> bool:
+        """True when Mission Control pause / halt / force-SAFE is active."""
+        blocked, _ = control_blocks_autopilot(cls.control_state())
+        return blocked
 
     def should_trade(
         self,
@@ -87,6 +117,11 @@ class AutopilotEngine:
 
         if self.env_paused():
             return self._paused("paused")
+
+        ctrl_blocked, ctrl_reason = control_blocks_autopilot(self.control_state())
+        if ctrl_blocked:
+            return self._paused(ctrl_reason)
+
         if gov == "HALT":
             return self._paused("HALT")
         if SAFE_MODE in (uni, gov, miss):
@@ -144,4 +179,6 @@ def execution_gate(
         return True, "autopilot_off"
     if reason == "paused":
         return True, "autopilot_paused"
+    if reason == "trading_halt":
+        return True, "trading_halt"
     return True, reason

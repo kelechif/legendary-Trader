@@ -5,6 +5,11 @@
   const eventsEl = document.getElementById("events");
   const rawEl = document.getElementById("raw");
   const footerEl = document.getElementById("footer");
+  const ctrlStatusEl = document.getElementById("ctrl-status");
+  const btnPause = document.getElementById("btn-pause");
+  const btnResume = document.getElementById("btn-resume");
+  const btnSafe = document.getElementById("btn-safe");
+  const btnClearSafe = document.getElementById("btn-clear-safe");
   const metricEls = Object.fromEntries(
     [...document.querySelectorAll("#metrics [data-k]")].map((el) => [el.dataset.k, el])
   );
@@ -16,11 +21,89 @@
   let ws;
   let lastAlertKey = "";
   let msgCount = 0;
+  let controlBusy = false;
+  let lastControl = null;
 
   function setStatus(text, state) {
     if (!statusEl) return;
     statusEl.textContent = text;
     statusEl.dataset.state = state || "bad";
+  }
+
+  function controlSummary(ctrl) {
+    if (!ctrl) return { text: "control: —", state: "" };
+    const flags = [];
+    if (ctrl.trading_halt) flags.push("halt");
+    if (ctrl.autopilot_paused) flags.push("paused");
+    if (ctrl.force_safe) flags.push("SAFE");
+    if (!flags.length) {
+      return { text: "control: running", state: "running" };
+    }
+    const state = ctrl.trading_halt
+      ? "halt"
+      : ctrl.force_safe
+        ? "safe"
+        : "paused";
+    return { text: `control: ${flags.join(" · ")}`, state };
+  }
+
+  function renderControl(ctrl) {
+    lastControl = ctrl;
+    const { text, state } = controlSummary(ctrl);
+    if (ctrlStatusEl) {
+      ctrlStatusEl.textContent = text;
+      ctrlStatusEl.dataset.state = state;
+    }
+    if (btnPause) btnPause.disabled = controlBusy || !!(ctrl && ctrl.autopilot_paused);
+    if (btnResume) btnResume.disabled = controlBusy || !(ctrl && ctrl.autopilot_paused);
+    if (btnSafe) btnSafe.disabled = controlBusy || !!(ctrl && ctrl.force_safe);
+    if (btnClearSafe) btnClearSafe.disabled = controlBusy || !(ctrl && ctrl.force_safe);
+  }
+
+  async function fetchControl() {
+    try {
+      const resp = await fetch("/api/control", { cache: "no-store" });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      renderControl(data);
+      return data;
+    } catch (err) {
+      if (ctrlStatusEl) {
+        ctrlStatusEl.textContent = `control: error (${err.message || err})`;
+        ctrlStatusEl.dataset.state = "";
+      }
+      return null;
+    }
+  }
+
+  async function postControl(path, body, label) {
+    if (controlBusy) return;
+    controlBusy = true;
+    renderControl(lastControl);
+    setStatus(`${label}…`, "warn");
+    try {
+      const opts = {
+        method: "POST",
+        headers: { Accept: "application/json" },
+      };
+      if (body !== undefined) {
+        opts.headers["Content-Type"] = "application/json";
+        opts.body = JSON.stringify(body);
+      }
+      const resp = await fetch(path, opts);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      renderControl(data);
+      pushEvent(`${label}: ${controlSummary(data).text}`);
+      setStatus(`Live — ${controlSummary(data).text}`, "ok");
+    } catch (err) {
+      pushEvent(`${label} failed: ${err.message || err}`);
+      setStatus(`${label} failed`, "bad");
+      await fetchControl();
+    } finally {
+      controlBusy = false;
+      renderControl(lastControl);
+    }
   }
 
   function fmtNum(n, digits = 2) {
@@ -222,5 +305,28 @@
     };
   }
 
+  if (btnPause) {
+    btnPause.addEventListener("click", () =>
+      postControl("/api/control/autopilot/pause", undefined, "Pause autopilot")
+    );
+  }
+  if (btnResume) {
+    btnResume.addEventListener("click", () =>
+      postControl("/api/control/autopilot/resume", undefined, "Resume autopilot")
+    );
+  }
+  if (btnSafe) {
+    btnSafe.addEventListener("click", () =>
+      postControl("/api/control/safe", { active: true }, "Force SAFE")
+    );
+  }
+  if (btnClearSafe) {
+    btnClearSafe.addEventListener("click", () =>
+      postControl("/api/control/safe", { active: false }, "Clear SAFE")
+    );
+  }
+
+  fetchControl();
+  setInterval(fetchControl, 5000);
   connect();
 })();
