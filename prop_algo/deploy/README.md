@@ -55,6 +55,7 @@ docker compose down
 
 - `REDIS_HOST` (default `redis`) and `REDIS_PORT` (default `6379`) are read by `infra.stream.Stream`.
 - `STREAM_BLOCK_MS` (default `1000`) — blocking timeout for Redis `XREADGROUP` in `infra.stream.Stream.consume` (avoids busy-polling empty streams).
+- `STREAM_MAXLEN` (default `10000`) — approximate Redis stream cap on `XADD` (`MAXLEN ~`) so long-running compose/k8s does not unbounded-grow Redis memory. Optional per-stream override: `STREAM_MAXLEN_<STREAM>` (non-alnum → `_`, e.g. `STREAM_MAXLEN_MARKET_DATA_STREAM`). Set `0` to disable trimming.
 - `LEARNING_LOOP_SLEEP` (default `2`) — seconds to sleep after each `learning_service` cycle so hot `risk_stream` traffic does not peg CPU; compose sets this explicitly. Optional: `LEARNING_NUM_NEW` (candidates per cycle, default `1`).
 - `MARL_LOOP_SLEEP` (default `2`) — seconds to sleep after each `marl_service` train step so hot `mission_stream` / `autonomy_stream` traffic does not peg CPU; set in `docker-compose.torch.yml`. Optional: `MARL_TORCH_THREADS` (default `1`).
 - `BROKER_ADAPTER=mock` (compose/k8s default) — see Brokers below.
