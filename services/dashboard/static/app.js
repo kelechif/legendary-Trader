@@ -136,6 +136,10 @@ function renderStatusBar(data, health) {
     const mode = data.trading_mode || "tick";
     const safe = data.safe_mode ? "SAFE MODE" : "LIVE SIM";
     const count = data.asset_count || assets.length;
+    const feed = data.feed_status || {};
+    const feedBadge = feed.provider
+        ? `<span class="badge ${feed.ready ? 'badge-ok' : 'badge-warn'}">Feed: ${feed.ready ? 'ready' : 'loading'}</span> `
+        : "";
     const cacheBadge = health
         ? `<span class="badge ${health.ready ? 'badge-ok' : 'badge-warn'}">Klines: ${health.cached}/${health.total}</span> `
         : "";
@@ -143,6 +147,7 @@ function renderStatusBar(data, health) {
         `<span class="badge">${mode.toUpperCase()}</span> ` +
         `<span class="badge ${data.safe_mode ? 'badge-warn' : 'badge-ok'}">${safe}</span> ` +
         `<span class="badge">Universe: ${count}</span> ` +
+        feedBadge +
         cacheBadge +
         `<span class="badge">Strategy: ${data.strategy}</span>`;
 }
@@ -441,8 +446,11 @@ document.getElementById("runBacktest").addEventListener("click", async () => {
 let universeHealth = null;
 
 async function update() {
-    const res = await fetch("/data");
-    const data = await res.json();
+    const statusBar = document.getElementById("statusBar");
+    try {
+        const res = await fetch("/data");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
 
     isEquityMode = data.trading_mode === "equity";
     if (isEquityMode) {
@@ -503,6 +511,11 @@ async function update() {
     updateEquityChart(data);
     document.getElementById("metricsLog").textContent = JSON.stringify(data.system_metrics, null, 2);
     document.getElementById("strategySelect").value = data.strategy;
+    } catch (err) {
+        statusBar.innerHTML =
+            `<span class="badge badge-warn">OFFLINE</span> ` +
+            `<span class="badge">Cannot reach dashboard — run start.bat or python run.py</span>`;
+    }
 }
 
 loadStrategies();

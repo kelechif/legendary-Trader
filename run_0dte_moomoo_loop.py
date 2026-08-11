@@ -11,6 +11,7 @@ from services.execution_engine.moomoo_options_broker import use_moomoo_options
 from services.options_engine.zero_dte_loop import run_loop, run_once
 from services.shared.config import load_config
 from services.shared.logging_setup import setup_logging
+from services.strategy_engine.registry import init as init_strategies
 
 
 def main() -> int:
@@ -23,6 +24,7 @@ def main() -> int:
 
     log = setup_logging()
     cfg = load_config()
+    init_strategies()
 
     if not use_moomoo_options():
         log.error("Set options.execution.broker: moomoo in config/local.yaml")

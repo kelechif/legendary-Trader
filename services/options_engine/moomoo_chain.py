@@ -120,6 +120,20 @@ def get_chain_for_backtest_date(
     return pd.DataFrame(), "none"
 
 
+def get_execution_contracts(owner: str | None = None) -> tuple[pd.DataFrame, str]:
+    """Live 0DTE contracts; fallback to today's option chain if screener empty."""
+    owner = owner or _owner_code()
+    chain_info = get_zero_dte_chain_info(owner)
+    if chain_info:
+        df = get_zero_dte_contracts(owner, chain_info)
+        if df is not None and not df.empty:
+            return df, "live_0dte"
+    df = get_option_chain_for_date(owner, date.today().isoformat())
+    if df is not None and not df.empty:
+        return df, "chain_today"
+    return pd.DataFrame(), "none"
+
+
 def get_option_chain_for_date(owner: str | None = None, iso_date: str | None = None) -> pd.DataFrame:
     """Fetch option chain for a single expiry date (yyyy-mm-dd)."""
     from moomoo import RET_OK
@@ -214,6 +228,7 @@ def pick_contracts_for_vertical(
     *,
     short_delta: float = 0.12,
     width: float = 5.0,
+    spot: float | None = None,
 ) -> tuple[dict, dict] | None:
     """
     Pick short + long leg for a credit vertical from 0DTE chain.
@@ -225,7 +240,13 @@ def pick_contracts_for_vertical(
     direction = direction.lower()
     opt_col = "option_type" if "option_type" in contracts.columns else "type"
     delta_col = next((c for c in contracts.columns if "delta" in c.lower()), None)
-    strike_col = next((c for c in contracts.columns if "strike" in c.lower()), "strike_price")
+    if "strike_price" in contracts.columns:
+        strike_col = "strike_price"
+    else:
+        strike_col = next(
+            (c for c in contracts.columns if "strike" in c.lower() and "time" not in c.lower()),
+            "strike_price",
+        )
     code_col = "code" if "code" in contracts.columns else "option_code"
 
     df = contracts.copy()
@@ -246,7 +267,22 @@ def pick_contracts_for_vertical(
         df["_abs_delta"] = (df[delta_col].astype(float) - target_sign * short_delta).abs()
         short_row = df.sort_values("_abs_delta").iloc[0]
     else:
-        short_row = df.iloc[len(df) // 3]
+        strikes = df[strike_col].astype(float)
+        if spot is not None:
+            offset = max(width * 1.5, float(spot) * short_delta * 0.25)
+            if target_sign < 0:
+                target = float(spot) - offset
+                otm = df[(strikes <= target) & (strikes >= target - width * 3)]
+            else:
+                target = float(spot) + offset
+                otm = df[(strikes >= target) & (strikes <= target + width * 3)]
+            if not otm.empty:
+                df = otm
+                strikes = df[strike_col].astype(float)
+        if target_sign < 0:
+            short_row = df.loc[strikes.idxmax()]
+        else:
+            short_row = df.loc[strikes.idxmin()]
 
     short_strike = float(short_row[strike_col])
     if target_sign < 0:

@@ -13,8 +13,8 @@ from services.execution_engine.moomoo_options_broker import (
 from services.execution_engine.ts_bridge import trading_halted
 from services.options_engine.moomoo_chain import (
     credit_for_vertical,
+    get_execution_contracts,
     get_zero_dte_chain_info,
-    get_zero_dte_contracts,
     pick_contracts_for_vertical,
 )
 from services.options_engine.zero_dte_stop import should_stop_vertical
@@ -70,16 +70,21 @@ def execute_0dte_signal(direction: str, *, tickets_used: int = 0) -> dict:
     qty = int(mm.get("contracts_per_trade", 1))
     credit = mm.get("limit_credit")
 
-    chain_info = get_zero_dte_chain_info(owner)
-    if not chain_info:
-        return {"status": "skipped", "reason": "no_0dte_chain_info", "owner": owner}
+    contracts, chain_source = get_execution_contracts(owner)
+    if contracts.empty:
+        return {"status": "skipped", "reason": "no_0dte_chain", "owner": owner, "chain_source": chain_source}
 
-    contracts = get_zero_dte_contracts(owner, chain_info)
+    from services.options_engine.moomoo_intraday import fetch_intraday_candles
+
+    bars = fetch_intraday_candles(owner, days_back=1, max_bars=5)
+    spot = float(bars[-1]["close"]) if bars else None
+
     legs = pick_contracts_for_vertical(
         contracts,
         direction,
         short_delta=short_delta,
         width=width,
+        spot=spot,
     )
     if not legs:
         return {"status": "skipped", "reason": "no_matching_contracts", "owner": owner}
@@ -117,6 +122,7 @@ def execute_0dte_signal(direction: str, *, tickets_used: int = 0) -> dict:
         "long_leg": long_leg,
         "credit": credit_val,
         "credit_source": credit_source,
+        "chain_source": chain_source,
         "order": order,
     }
 

@@ -17,6 +17,21 @@ from services.training_engine.wfo import run_walk_forward
 import os
 
 _dashboard_dir = os.path.dirname(os.path.abspath(__file__))
+_DASHBOARD_CANDLE_LIMIT = 120
+_DASHBOARD_PRICE_LIMIT = 120
+
+
+def _trim_series(items, limit: int):
+    if not items or len(items) <= limit:
+        return items
+    return items[-limit:]
+
+
+def _trim_candles_map(candles: dict, limit: int) -> dict:
+    return {
+        asset: {tf: _trim_series(series, limit) for tf, series in tfs.items()}
+        for asset, tfs in candles.items()
+    }
 
 
 def create_app():
@@ -79,8 +94,8 @@ def create_app():
 
         return jsonify(
             {
-                "prices": prices,
-                "candles": candles,
+                "prices": {a: _trim_series(prices[a], _DASHBOARD_PRICE_LIMIT) for a in ASSETS},
+                "candles": _trim_candles_map(candles, _DASHBOARD_CANDLE_LIMIT),
                 "timeframe": timeframe,
                 "trades": trades,
                 "equity": equity if not IS_EQUITY_MODE else {"PORTFOLIO": paper_trader.portfolio_equity_curve},
