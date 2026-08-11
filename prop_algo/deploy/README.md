@@ -58,7 +58,8 @@ docker compose down
 - `LEARNING_LOOP_SLEEP` (default `2`) — seconds to sleep after each `learning_service` cycle so hot `risk_stream` traffic does not peg CPU; compose sets this explicitly. Optional: `LEARNING_NUM_NEW` (candidates per cycle, default `1`).
 - `MARL_LOOP_SLEEP` (default `2`) — seconds to sleep after each `marl_service` train step so hot `mission_stream` / `autonomy_stream` traffic does not peg CPU; set in `docker-compose.torch.yml`. Optional: `MARL_TORCH_THREADS` (default `1`).
 - `BROKER_ADAPTER=mock` (compose/k8s default) — see Brokers below.
-- Image `PYTHONPATH=/app` so `core`, `infra`, `trading`, `risk`, `learning`, `services`, `mission_ui`, `autonomy`, and `agents` imports resolve.
+- `NEURAL_EXECUTION=1|0` (compose default `1` on `execution_service`) — optional neural/heuristic execution advice. When enabled, `execution_service` publishes `route` / `slippage` / `volatility` / `size` on `execution_stream` (Mission UI exec tiles). Works without torch via heuristics; set `NEURAL_MODEL_DIR` to load `route.pt` / `slippage.pt` / `volatility.pt` / `sizing.pt` when torch is available. Set `0` to disable.
+- Image `PYTHONPATH=/app` so `core`, `infra`, `trading`, `risk`, `learning`, `services`, `mission_ui`, `autonomy`, `neural_execution`, and `agents` imports resolve.
 
 ### UI
 

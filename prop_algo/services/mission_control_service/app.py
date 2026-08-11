@@ -22,6 +22,7 @@ _DEFAULT_EXECUTION = {
     "route": "MARKET",
     "slippage": 0.0005,
     "volatility": 0.001,
+    "size": 0.1,
 }
 
 
@@ -43,11 +44,17 @@ def _normalize_learning(learning: dict | None) -> dict:
 
 def _normalize_execution(execution: Any) -> dict:
     if isinstance(execution, dict) and "route" in execution:
-        return {
+        out = {
             "route": execution.get("route", "MARKET"),
             "slippage": float(execution.get("slippage", 0.0005)),
             "volatility": float(execution.get("volatility", 0.001)),
+            "size": float(execution.get("size", 0.1)),
         }
+        if "backend" in execution:
+            out["backend"] = execution.get("backend")
+        if "neural_enabled" in execution:
+            out["neural_enabled"] = bool(execution.get("neural_enabled"))
+        return out
     return dict(_DEFAULT_EXECUTION)
 
 

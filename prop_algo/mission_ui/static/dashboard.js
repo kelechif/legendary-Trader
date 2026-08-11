@@ -108,6 +108,10 @@
       "slippage",
       exec.slippage == null ? "—" : fmtNum(exec.slippage, 5)
     );
+    setMetric(
+      "exec_size",
+      exec.size == null ? "—" : fmtNum(exec.size, 3)
+    );
 
     const autonomy = payload.autonomy || {};
     const autonomyMode =
