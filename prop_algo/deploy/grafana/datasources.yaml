@@ -1,8 +1,6 @@
-# Grafana datasource provisioning (local import / k8s ConfigMap mirror).
-# k8s Grafana points at prometheus-operator's prometheus-operated Service.
-# For local Grafana scraping compose metrics, change url to your Prometheus
-# (e.g. http://host.docker.internal:9090) or add static scrape targets for
-# :8000–:8004 on the host.
+# Grafana datasource provisioning.
+# Compose metrics profile: Prometheus service on the compose network.
+# k8s uses an inline ConfigMap in k8s/grafana.yaml (prometheus-operated URL).
 apiVersion: 1
 datasources:
   - name: Prometheus
@@ -11,4 +9,4 @@ datasources:
     uid: prometheus
     isDefault: true
     editable: true
-    url: http://prometheus-operated.prop-algo.svc:9090
+    url: http://prometheus:9090

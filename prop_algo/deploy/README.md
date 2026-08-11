@@ -290,7 +290,36 @@ Source: `prop_algo/deploy/grafana/prop_algo-overview.json` — panels use only g
 | `learning_fitness` | `strategy` | `learning_service` `:8003` |
 | `unified_mode` | — | `unified_core_service` `:8004` (0=NORMAL … 3=EVOLUTION) |
 
-**Local Grafana (compose metrics, no k8s):** run your own Prometheus scraping `host.docker.internal:8000-8004` (or the published compose ports), then **Dashboards → Import → Upload** `prop_algo/deploy/grafana/prop_algo-overview.json`. Point the datasource UID `prometheus` at that Prometheus (or rename the dashboard datasource after import). Provisioning snippets for reference: `grafana/datasources.yaml`, `grafana/dashboards.yaml`. Compose does **not** add a Grafana/Prometheus profile (keeps the 14-service stack lean).
+### Compose metrics profile (opt-in Prometheus + Grafana)
+
+Keeps the light stack lean: default `docker compose up` is unchanged. Overlay adds
+Prometheus (scrapes Docker-network `service:port` `/metrics`) and Grafana (provisions
+datasource + loads `grafana/prop_algo-overview.json`).
+
+| Artifact | Role |
+|----------|------|
+| `docker-compose.metrics.yml` | Profile `metrics`: `prometheus`, `grafana` |
+| `prometheus/prometheus.yml` | Static scrape of `:8000`–`:8004` on compose service names |
+| `grafana/datasources.yaml` | Prometheus at `http://prometheus:9090` (compose) |
+| `grafana/dashboards.yaml` | File provider → `/var/lib/grafana/dashboards` |
+| `grafana/prop_algo-overview.json` | Overview dashboard (same JSON as k8s) |
+
+From `prop_algo/deploy` (light stack must be up or started together):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.metrics.yml --profile metrics up -d
+```
+
+| UI | URL | Creds |
+|----|-----|--------|
+| Grafana | [http://127.0.0.1:3000](http://127.0.0.1:3000) | `admin` / `admin` (local only) |
+| Prometheus | [http://127.0.0.1:9090](http://127.0.0.1:9090) | — |
+
+Dashboard folder in Grafana: **prop_algo** → **prop_algo overview**. Stop metrics only:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.metrics.yml --profile metrics stop prometheus grafana
+```
 
 ### Roll out a single service
 
