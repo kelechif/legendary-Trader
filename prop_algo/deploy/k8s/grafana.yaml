@@ -1,4 +1,56 @@
 # Optional Grafana for local/dev clusters (not production-hardened).
+# Provisions Prometheus datasource + loads the prop_algo overview dashboard.
+#
+# Dashboard JSON lives at ../grafana/prop_algo-overview.json (single source of truth).
+# Apply (from this directory):
+#   kubectl -n prop-algo create configmap grafana-dashboard-prop-algo \
+#     --from-file=prop_algo-overview.json=../grafana/prop_algo-overview.json \
+#     --dry-run=client -o yaml | kubectl apply -f -
+#   kubectl apply -f grafana.yaml
+# Optional Prometheus Operator scrape path:
+#   kubectl apply -f prometheus.yaml -f servicemonitor.yaml
+# UI: NodePort http://<node>:30300  (admin / admin)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: prop-algo
+  labels:
+    app: grafana
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        uid: prometheus
+        isDefault: true
+        editable: true
+        url: http://prometheus-operated.prop-algo.svc:9090
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-provider
+  namespace: prop-algo
+  labels:
+    app: grafana
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: prop_algo
+        orgId: 1
+        folder: prop_algo
+        type: file
+        disableDeletion: false
+        updateIntervalSeconds: 30
+        allowUiUpdates: true
+        options:
+          path: /var/lib/grafana/dashboards
+          foldersFromFilesStructure: false
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -29,6 +81,18 @@ spec:
               value: admin
             - name: GF_USERS_ALLOW_SIGN_UP
               value: "false"
+            - name: GF_PATHS_PROVISIONING
+              value: /etc/grafana/provisioning
+          volumeMounts:
+            - name: datasources
+              mountPath: /etc/grafana/provisioning/datasources
+              readOnly: true
+            - name: dashboard-provider
+              mountPath: /etc/grafana/provisioning/dashboards
+              readOnly: true
+            - name: dashboards
+              mountPath: /var/lib/grafana/dashboards
+              readOnly: true
           readinessProbe:
             httpGet:
               path: /api/health
@@ -41,6 +105,16 @@ spec:
               memory: 128Mi
             limits:
               memory: 512Mi
+      volumes:
+        - name: datasources
+          configMap:
+            name: grafana-datasources
+        - name: dashboard-provider
+          configMap:
+            name: grafana-dashboard-provider
+        - name: dashboards
+          configMap:
+            name: grafana-dashboard-prop-algo
 ---
 apiVersion: v1
 kind: Service
