@@ -19,6 +19,7 @@ data:
   BROKER_ADAPTER: mock
   NEURAL_EXECUTION: "1"
   RISK_OFF_ENABLED: "1"
+  AUTOPILOT_ENABLED: "1"
 ---
 # --- market_data_service (metrics :8000) ---
 apiVersion: apps/v1

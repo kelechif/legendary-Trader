@@ -16,6 +16,8 @@ x-prop-algo-service: &prop_algo_service
     BROKER_ADAPTER: mock
     # Drawdown / SAFE_MODE gate (mock equity ±50 stays below trip → tradeable).
     RISK_OFF_ENABLED: "1"
+    # Autopilot strategy→execution gate (off/paused → size=0, no new orders).
+    AUTOPILOT_ENABLED: "1"
   depends_on:
     redis:
       condition: service_healthy
