@@ -11,6 +11,7 @@ from prop_algo.mission_control.mission_dashboard import (
     _simulation_status,
     build_dashboard,
 )
+from prop_algo.mission_control.mission_engine import MissionControlEngine
 
 
 def _base_snapshot(**overrides):
@@ -171,6 +172,87 @@ class TestMissionDashboard(unittest.TestCase):
         )
         self.assertEqual(build_dashboard(off)["autopilot"], "off")
         self.assertIn("Autopilot off", generate_alerts(off))
+
+
+class TestMissionModeControlOverride(unittest.TestCase):
+    def _probes(self, **overrides):
+        probes = {
+            "market": {"ACC1": {"equity": 10000, "balance": 10000}},
+            "governance": {"rules": {"execution_mode": "NORMAL"}},
+            "unified": {"mode": "NORMAL", "stability": 0.9},
+            "risk": {
+                "anomalies": [],
+                "liquidity": {"global_liquidity": 0.8},
+            },
+            "learning": {"meta_mode": "NORMAL", "best_params": {}},
+            "execution": {
+                "route": "MARKET",
+                "slippage": 0.0005,
+                "volatility": 0.001,
+                "size": 0.1,
+            },
+            "adapter": "mock",
+        }
+        probes.update(overrides)
+        return probes
+
+    def test_stream_mode_when_control_clear(self):
+        result = MissionControlEngine().run(
+            self._probes(),
+            control={
+                "autopilot_paused": False,
+                "trading_halt": False,
+                "force_safe": False,
+            },
+        )
+        self.assertEqual(result["global_mode"], "NORMAL")
+        self.assertEqual(result["global_mode_reason"], "normal")
+        self.assertEqual(result["stream_global_mode"], "NORMAL")
+
+    def test_force_safe_overrides_to_safe_mode(self):
+        result = MissionControlEngine().run(
+            self._probes(),
+            control={
+                "autopilot_paused": False,
+                "trading_halt": False,
+                "force_safe": True,
+            },
+        )
+        self.assertEqual(result["global_mode"], "SAFE_MODE")
+        self.assertEqual(result["global_mode_reason"], "force_safe")
+        self.assertEqual(result["stream_global_mode"], "NORMAL")
+
+    def test_trading_halt_precedes_force_safe(self):
+        result = MissionControlEngine().run(
+            self._probes(),
+            control={
+                "autopilot_paused": False,
+                "trading_halt": True,
+                "force_safe": True,
+            },
+        )
+        self.assertEqual(result["global_mode"], "HALT")
+        self.assertEqual(result["global_mode_reason"], "trading_halt")
+
+    def test_halt_overrides_stream_safe_mode(self):
+        stressed = self._probes(
+            risk={
+                "anomalies": list(range(6)),
+                "liquidity": {"global_liquidity": 0.2},
+            },
+            unified={"mode": "SAFE", "stability": 0.1},
+        )
+        result = MissionControlEngine().run(
+            stressed,
+            control={
+                "autopilot_paused": False,
+                "trading_halt": True,
+                "force_safe": False,
+            },
+        )
+        self.assertEqual(result["stream_global_mode"], "SAFE_MODE")
+        self.assertEqual(result["global_mode"], "HALT")
+        self.assertEqual(result["global_mode_reason"], "trading_halt")
 
 
 if __name__ == "__main__":

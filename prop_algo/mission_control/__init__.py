@@ -1,6 +1,7 @@
 from .control_state import (
     control_blocks_autopilot,
     get_control_state,
+    mode_override_from_control,
     pause_autopilot,
     resume_autopilot,
     set_control_state,
@@ -32,4 +33,5 @@ __all__ = [
     "set_force_safe",
     "set_trading_halt",
     "control_blocks_autopilot",
+    "mode_override_from_control",
 ]

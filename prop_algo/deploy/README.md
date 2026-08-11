@@ -82,7 +82,9 @@ filesystem is writable. `execution_service` / `AutopilotEngine` re-read this eac
 cycle (in addition to env `AUTOPILOT_PAUSED`), so operators can pause/resume
 without restarting containers. The Mission UI header row has **Pause / Resume /
 Force SAFE / Clear SAFE** buttons; results show in the connection/status area
-and the operator control strip.
+and the operator control strip. Operator `trading_halt` / `force_safe` also override
+mission `global_mode` (HALT > SAFE_MODE > stream-derived) and map unified mode to
+`SAFE_MODE` so the mode badge stays in sync with the control plane.
 
 ### UI
 

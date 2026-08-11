@@ -9,6 +9,7 @@ from core.adapters.factory import register_broker_accounts
 from core.logging.logger import get_logger
 from core.registry.registry import Registry
 from infra.stream import Stream
+from mission_control.control_state import get_control_state
 from mission_control.mission_engine import MissionControlEngine
 from trading.multi_account.manager import MultiAccountManager
 
@@ -99,6 +100,7 @@ def run_loop(bus: Stream | None = None, poll_block_ms: int = 200) -> None:
         "marl": None,
         "simulation": None,
     }
+    last_control_sig: tuple[bool, bool, bool] | None = None
     streams = (
         ("risk", "risk_stream"),
         ("governance", "governance_stream"),
@@ -125,15 +127,25 @@ def run_loop(bus: Stream | None = None, poll_block_ms: int = 200) -> None:
                 last[key] = msg
                 updated = True
 
+        ctrl = get_control_state()
+        ctrl_sig = (
+            bool(ctrl.get("trading_halt")),
+            bool(ctrl.get("force_safe")),
+            bool(ctrl.get("autopilot_paused")),
+        )
+        control_changed = ctrl_sig != last_control_sig
+
         if not (last["risk"] and last["governance"] and last["unified"]):
             if not updated:
                 time.sleep(0.25)
             continue
 
-        if not updated:
+        # Republish when streams update or operator control changes mode/flags.
+        if not updated and not control_changed:
             time.sleep(0.05)
             continue
 
+        last_control_sig = ctrl_sig
         multi_summary = multi.summary()
         probes = {
             "market": multi_summary.get("accounts") or multi.snapshot(),
@@ -151,13 +163,20 @@ def run_loop(bus: Stream | None = None, poll_block_ms: int = 200) -> None:
             probes["marl"] = last["marl"]
         if last["simulation"] is not None:
             probes["simulation"] = last["simulation"]
-        result = engine.run(probes)
+        result = engine.run(probes, control=ctrl)
         snapshot = {
             **probes,
             "alerts": result["alerts"],
             "dashboard": result["dashboard"],
             "actions": result["actions"],
             "global_mode": result["global_mode"],
+            "global_mode_reason": result.get("global_mode_reason"),
+            "stream_global_mode": result.get("stream_global_mode"),
+            "control": {
+                "autopilot_paused": bool(ctrl.get("autopilot_paused")),
+                "trading_halt": bool(ctrl.get("trading_halt")),
+                "force_safe": bool(ctrl.get("force_safe")),
+            },
         }
         bus.publish("mission_stream", snapshot)
 

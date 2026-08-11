@@ -8,8 +8,9 @@ for _p in (_ROOT, _PROP_ALGO):
         sys.path.insert(0, str(_p))
 
 from infra.metrics import Metrics
-from infra.modes import MODE_TO_INT
+from infra.modes import MODE_TO_INT, SAFE_MODE
 from infra.stream import Stream
+from mission_control.control_state import get_control_state, mode_override_from_control
 from risk.unified_core.unified_core_engine import UnifiedCoreEngine
 
 
@@ -32,6 +33,14 @@ def main():
             risk["liquidity"],
             gov
         )
+
+        ctrl = get_control_state()
+        override, reason = mode_override_from_control(ctrl)
+        if override:
+            # Unified metric space only knows SAFE_MODE (not HALT).
+            state = dict(state)
+            state["mode"] = SAFE_MODE
+            state["mode_reason"] = reason
 
         if metrics is None:
             metrics = Metrics(8004)
