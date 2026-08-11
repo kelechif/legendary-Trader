@@ -1,4 +1,7 @@
-from infra.modes import NORMAL
+try:
+    from infra.modes import NORMAL
+except ImportError:  # package import as prop_algo.* (pytest / non-Docker)
+    from prop_algo.infra.modes import NORMAL
 
 from .meta_state import MetaState
 
