@@ -29,7 +29,7 @@ from .base_adapter import BaseAdapter
 from .mock_adapter import MockAdapter
 
 if TYPE_CHECKING:
-    from core.registry.registry import Registry
+    from ..registry.registry import Registry
 
 SUPPORTED_ADAPTERS = ("mock", "mt5", "ctrader")
 

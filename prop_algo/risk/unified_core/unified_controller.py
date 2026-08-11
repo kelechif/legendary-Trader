@@ -1,4 +1,7 @@
-from infra.modes import ADAPTIVE, NORMAL, SAFE_MODE
+try:
+    from infra.modes import ADAPTIVE, NORMAL, SAFE_MODE
+except ImportError:  # package import as prop_algo.* (pytest / non-Docker)
+    from prop_algo.infra.modes import ADAPTIVE, NORMAL, SAFE_MODE
 
 
 def control_unified(stability, coherence):

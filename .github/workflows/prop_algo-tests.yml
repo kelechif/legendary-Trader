@@ -1,0 +1,40 @@
+name: prop_algo tests
+
+on:
+  push:
+    paths:
+      - "prop_algo/**"
+      - "requirements.txt"
+      - "prop_algo/deploy/requirements.txt"
+      - "prop_algo/deploy/requirements-dev.txt"
+      - ".github/workflows/prop_algo-tests.yml"
+  pull_request:
+    paths:
+      - "prop_algo/**"
+      - "requirements.txt"
+      - "prop_algo/deploy/requirements.txt"
+      - "prop_algo/deploy/requirements-dev.txt"
+      - ".github/workflows/prop_algo-tests.yml"
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            prop_algo/deploy/requirements.txt
+            prop_algo/deploy/requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r prop_algo/deploy/requirements-dev.txt
+
+      - name: Run prop_algo unit tests
+        run: python -m pytest prop_algo/tests -q
