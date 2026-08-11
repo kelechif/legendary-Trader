@@ -10,6 +10,7 @@ from core.logging.logger import get_logger
 from core.registry.registry import Registry
 from infra.stream import Stream
 from mission_control.mission_engine import MissionControlEngine
+from trading.multi_account.manager import MultiAccountManager
 
 log = get_logger("mission-control-service")
 SERVICE = "mission-control-service"
@@ -64,15 +65,14 @@ def _normalize_execution(execution: Any) -> dict:
         autopilot = execution.get("autopilot")
         if isinstance(autopilot, dict):
             out["autopilot"] = autopilot
+        orders = execution.get("orders")
+        if isinstance(orders, list):
+            out["orders"] = orders
+        multi = execution.get("multi_account")
+        if isinstance(multi, dict):
+            out["multi_account"] = multi
         return out
     return dict(_DEFAULT_EXECUTION)
-
-
-def _market_probe(registry: Registry) -> dict:
-    return {
-        name: profile["adapter"].get_account_info()
-        for name, profile in registry.accounts.items()
-    }
 
 
 def run_loop(bus: Stream | None = None, poll_block_ms: int = 200) -> None:
@@ -80,7 +80,14 @@ def run_loop(bus: Stream | None = None, poll_block_ms: int = 200) -> None:
     engine = MissionControlEngine()
     registry = Registry()
     adapter_kind = register_broker_accounts(registry)
-    log.info("%s broker adapter=%s", SERVICE, adapter_kind)
+    multi = MultiAccountManager(registry)
+    log.info(
+        "%s broker adapter=%s multi_account=%s accounts=%s",
+        SERVICE,
+        adapter_kind,
+        "on" if multi.enabled() else "off",
+        multi.account_count(),
+    )
 
     last: dict[str, Any] = {
         "risk": None,
@@ -127,14 +134,16 @@ def run_loop(bus: Stream | None = None, poll_block_ms: int = 200) -> None:
             time.sleep(0.05)
             continue
 
+        multi_summary = multi.summary()
         probes = {
-            "market": _market_probe(registry),
+            "market": multi_summary.get("accounts") or multi.snapshot(),
             "risk": last["risk"],
             "governance": last["governance"],
             "unified": last["unified"],
             "learning": _normalize_learning(last["learning"]),
             "execution": _normalize_execution(last["execution"]),
             "adapter": adapter_kind,
+            "multi_account": multi_summary,
         }
         if last["autonomy"] is not None:
             probes["autonomy"] = last["autonomy"]

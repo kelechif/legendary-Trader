@@ -66,10 +66,27 @@ def _autopilot_status(snapshot):
     return "running"
 
 
+def _multi_account_fields(snapshot):
+    multi = snapshot.get("multi_account")
+    market = snapshot.get("market") or {}
+    if isinstance(multi, dict) and multi:
+        accounts = multi.get("accounts")
+        if not isinstance(accounts, dict):
+            accounts = market if isinstance(market, dict) else {}
+        count = multi.get("account_count")
+        if count is None:
+            count = len(accounts)
+        return int(count), accounts
+    if isinstance(market, dict):
+        return len(market), market
+    return 0, {}
+
+
 def build_dashboard(snapshot):
     market = snapshot.get("market") or {}
     account = market.get("ACC1") or (next(iter(market.values())) if market else {})
     autonomy = snapshot.get("autonomy") if isinstance(snapshot.get("autonomy"), dict) else None
+    account_count, accounts = _multi_account_fields(snapshot)
     return {
         "equity": account.get("equity"),
         "risk_mode": snapshot["governance"]["rules"]["execution_mode"],
@@ -78,6 +95,8 @@ def build_dashboard(snapshot):
         "liquidity": snapshot["risk"]["liquidity"]["global_liquidity"],
         "learning_meta_mode": snapshot["learning"]["meta_mode"],
         "adapter": snapshot.get("adapter"),
+        "account_count": account_count,
+        "accounts": accounts,
         "autonomy_mode": (autonomy or {}).get("global_mode"),
         "marl_status": _marl_status(snapshot.get("marl")),
         "simulation_status": _simulation_status(snapshot.get("simulation")),

@@ -14,6 +14,8 @@ x-prop-algo-service: &prop_algo_service
     PYTHONUNBUFFERED: "1"
     # Live MT5/cTrader are host-oriented; keep mock in Docker/compose.
     BROKER_ADAPTER: mock
+    # Mock factory registers ACC1,ACC2; multi-account routing/snapshots on by default.
+    MULTI_ACCOUNT_ENABLED: "1"
     # Drawdown / SAFE_MODE gate (mock equity ±50 stays below trip → tradeable).
     RISK_OFF_ENABLED: "1"
     # Autopilot strategy→execution gate (off/paused → size=0, no new orders).

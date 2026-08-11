@@ -178,6 +178,34 @@
         : String(anomalies);
 
     setMetric("equity", fmtNum(dash.equity, 2));
+
+    const multi = payload.multi_account || {};
+    const accounts =
+      dash.accounts ||
+      multi.accounts ||
+      payload.market ||
+      {};
+    const accountCount =
+      dash.account_count ??
+      multi.account_count ??
+      (accounts && typeof accounts === "object"
+        ? Object.keys(accounts).length
+        : null);
+    setMetric(
+      "account_count",
+      accountCount == null ? "—" : String(accountCount)
+    );
+    let accountSnap = "—";
+    if (accounts && typeof accounts === "object") {
+      const parts = Object.entries(accounts).map(([name, info]) => {
+        const eq =
+          info && info.equity != null ? fmtNum(info.equity, 0) : "—";
+        return `${name}:${eq}`;
+      });
+      if (parts.length) accountSnap = parts.join(" · ");
+    }
+    setMetric("account_snap", accountSnap, accountSnap === "—");
+
     setMetric("risk_mode", dash.risk_mode ?? "—");
     setMetric("unified_mode", dash.unified_mode ?? "—");
     setMetric(
@@ -274,7 +302,9 @@
     rawEl.textContent = JSON.stringify(payload, null, 2);
     if (footerEl) {
       const adapter = payload.adapter || "—";
-      footerEl.textContent = `broker: ${adapter}`;
+      const n =
+        accountCount != null ? accountCount : Object.keys(accounts || {}).length;
+      footerEl.textContent = `broker: ${adapter} · accounts: ${n || "—"}`;
     }
     setStatus(`Live — mission_stream · ${msgCount} update${msgCount === 1 ? "" : "s"}`, "ok");
   }

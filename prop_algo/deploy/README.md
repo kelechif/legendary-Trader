@@ -128,6 +128,18 @@ Adapter selection is env-driven via `core.adapters.factory` (`BROKER_ADAPTER`).
 `MetaTrader5`. Leave `BROKER_ADAPTER=mock` in compose unless you mount a custom host
 setup (not supported by the default images).
 
+### Multi-account
+
+`trading.multi_account.MultiAccountManager` wraps the registry after
+`register_broker_accounts()`. With mock compose defaults (`BROKER_ACCOUNTS=ACC1,ACC2`),
+both accounts are tracked; execution orders carry an `account` field; `mission_stream`
+includes `multi_account` (`account_count` + per-account equity/balance) and the Mission
+UI shows Accounts / Account snap tiles.
+
+| Variable | Default | Notes |
+|----------|---------|--------|
+| `MULTI_ACCOUNT_ENABLED` | `1` | `0` collapses routing to the first registered account |
+
 ### Required env vars
 
 **Common**
@@ -136,6 +148,7 @@ setup (not supported by the default images).
 |----------|---------|--------|
 | `BROKER_ADAPTER` | `mock` | `mock` \| `mt5` \| `ctrader` |
 | `BROKER_ACCOUNTS` | `ACC1,ACC2` (mock) / `ACC1` (live) | Comma-separated registry ids |
+| `MULTI_ACCOUNT_ENABLED` | `1` | Multi-account routing + mission snapshots |
 
 **MT5** (`BROKER_ADAPTER=mt5`)
 
