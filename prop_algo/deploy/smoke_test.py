@@ -5,6 +5,7 @@ Checks:
   - Redis PING
   - Mission UI HTTP 200
   - Mission UI ``GET /api/control`` returns control-plane JSON
+  - Mission UI halt round-trip (``POST /api/control/halt`` on then off; leaves NORMAL)
   - WebSocket delivers a mission_stream payload with an ``adapter`` field
   - Optional: Redis stream lengths for core + optional torch streams
 
@@ -112,6 +113,22 @@ def check_http(url: str, timeout: float) -> bool:
     return False
 
 
+def _post_json(url: str, payload: dict, timeout: float = 5.0) -> dict:
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        code = resp.getcode()
+        body = resp.read().decode("utf-8", errors="replace")
+        if code != 200:
+            raise RuntimeError(f"HTTP {code}: {body[:200]}")
+        return json.loads(body)
+
+
 def check_control_api(ui_url: str, timeout: float) -> bool:
     """GET /api/control — operator control plane must respond with flags."""
     url = ui_url.rstrip("/") + "/api/control"
@@ -144,6 +161,29 @@ def check_control_api(ui_url: str, timeout: float) -> bool:
         time.sleep(1)
     _fail(f"control API {url}: {last_err}")
     return False
+
+
+def check_halt_roundtrip(ui_url: str) -> bool:
+    """POST halt on then off; always attempt clear so the stack leaves NORMAL."""
+    halt_url = ui_url.rstrip("/") + "/api/control/halt"
+    try:
+        on = _post_json(halt_url, {"active": True})
+        if not on.get("trading_halt"):
+            raise RuntimeError(f"halt on did not set trading_halt: {on}")
+        _ok("control halt active=true")
+        off = _post_json(halt_url, {"active": False})
+        if off.get("trading_halt"):
+            raise RuntimeError(f"halt clear left trading_halt set: {off}")
+        _ok("control halt active=false (stack left with trading_halt=false)")
+        return True
+    except Exception as exc:
+        _fail(f"control halt round-trip: {exc}")
+        try:
+            _post_json(halt_url, {"active": False})
+            _ok("control halt cleared after failure")
+        except Exception as clear_exc:
+            _fail(f"control halt clear-after-failure: {clear_exc}")
+        return False
 
 
 def check_ws(ws_url: str, timeout: float) -> bool:
@@ -276,6 +316,7 @@ def main(argv: list[str] | None = None) -> int:
         check_redis(args.redis_host, args.redis_port),
         check_http(ui + "/", args.timeout),
         check_control_api(ui, args.timeout),
+        check_halt_roundtrip(ui),
         check_ws(ws_url, args.timeout),
     ]
     if args.check_streams or args.torch_streams:

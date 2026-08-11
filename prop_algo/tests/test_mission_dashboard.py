@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
 
 from prop_algo.mission_control.mission_alerts import generate_alerts
 from prop_algo.mission_control.mission_controller import apply_mission_actions
@@ -12,6 +13,8 @@ from prop_algo.mission_control.mission_dashboard import (
     build_dashboard,
 )
 from prop_algo.mission_control.mission_engine import MissionControlEngine
+
+_MISSION_UI_STATIC = Path(__file__).resolve().parents[1] / "mission_ui" / "static"
 
 
 def _base_snapshot(**overrides):
@@ -253,6 +256,21 @@ class TestMissionModeControlOverride(unittest.TestCase):
         self.assertEqual(result["stream_global_mode"], "SAFE_MODE")
         self.assertEqual(result["global_mode"], "HALT")
         self.assertEqual(result["global_mode_reason"], "trading_halt")
+
+
+class TestMissionUiOperatorControls(unittest.TestCase):
+    def test_halt_buttons_wired_like_safe(self):
+        html = (_MISSION_UI_STATIC / "dashboard.html").read_text(encoding="utf-8")
+        js = (_MISSION_UI_STATIC / "dashboard.js").read_text(encoding="utf-8")
+        self.assertIn('id="btn-halt"', html)
+        self.assertIn('id="btn-clear-halt"', html)
+        self.assertIn("/api/control/halt", js)
+        self.assertIn('postControl("/api/control/halt", { active: true }, "Halt")', js)
+        self.assertIn(
+            'postControl("/api/control/halt", { active: false }, "Clear Halt")', js
+        )
+        self.assertIn("btnHalt.disabled", js)
+        self.assertIn("btnClearHalt.disabled", js)
 
 
 if __name__ == "__main__":

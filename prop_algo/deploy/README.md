@@ -81,10 +81,11 @@ State is persisted in Redis key `mission:control` (override with
 filesystem is writable. `execution_service` / `AutopilotEngine` re-read this each
 cycle (in addition to env `AUTOPILOT_PAUSED`), so operators can pause/resume
 without restarting containers. The Mission UI header row has **Pause / Resume /
-Force SAFE / Clear SAFE** buttons; results show in the connection/status area
-and the operator control strip. Operator `trading_halt` / `force_safe` also override
-mission `global_mode` (HALT > SAFE_MODE > stream-derived) and map unified mode to
-`SAFE_MODE` so the mode badge stays in sync with the control plane.
+Force SAFE / Clear SAFE / Halt / Clear Halt** buttons; results show in the
+connection/status area and the operator control strip. Operator `trading_halt` /
+`force_safe` also override mission `global_mode` (HALT > SAFE_MODE > stream-derived)
+and map unified mode to `SAFE_MODE` so the mode badge stays in sync with the
+control plane.
 
 ### UI
 
@@ -92,7 +93,7 @@ Open [http://127.0.0.1:8080](http://127.0.0.1:8080) after `mission_ui` is up.
 
 The dashboard WebSocket is same-origin (`ws://<host>:8080/ws`) and streams the latest
 `mission_stream` snapshot. The UI shows mode, key metrics, alerts/events, connection
-state, operator pause/resume controls, and broker adapter mode in the footer (raw JSON remains under a collapsible section).
+state, operator pause/resume/SAFE/halt controls, and broker adapter mode in the footer (raw JSON remains under a collapsible section).
 When torch/autonomy publishers are up, optional **Autonomy / MARL / Simulation** tiles
 populate from fields folded into `mission_stream`.
 Image needs `websockets` so uvicorn can upgrade `/ws`.

@@ -10,6 +10,8 @@
   const btnResume = document.getElementById("btn-resume");
   const btnSafe = document.getElementById("btn-safe");
   const btnClearSafe = document.getElementById("btn-clear-safe");
+  const btnHalt = document.getElementById("btn-halt");
+  const btnClearHalt = document.getElementById("btn-clear-halt");
   const metricEls = Object.fromEntries(
     [...document.querySelectorAll("#metrics [data-k]")].map((el) => [el.dataset.k, el])
   );
@@ -91,6 +93,8 @@
     if (btnResume) btnResume.disabled = controlBusy || !(ctrl && ctrl.autopilot_paused);
     if (btnSafe) btnSafe.disabled = controlBusy || !!(ctrl && ctrl.force_safe);
     if (btnClearSafe) btnClearSafe.disabled = controlBusy || !(ctrl && ctrl.force_safe);
+    if (btnHalt) btnHalt.disabled = controlBusy || !!(ctrl && ctrl.trading_halt);
+    if (btnClearHalt) btnClearHalt.disabled = controlBusy || !(ctrl && ctrl.trading_halt);
     refreshModeBadge();
   }
 
@@ -386,6 +390,16 @@
   if (btnClearSafe) {
     btnClearSafe.addEventListener("click", () =>
       postControl("/api/control/safe", { active: false }, "Clear SAFE")
+    );
+  }
+  if (btnHalt) {
+    btnHalt.addEventListener("click", () =>
+      postControl("/api/control/halt", { active: true }, "Halt")
+    );
+  }
+  if (btnClearHalt) {
+    btnClearHalt.addEventListener("click", () =>
+      postControl("/api/control/halt", { active: false }, "Clear Halt")
     );
   }
 
