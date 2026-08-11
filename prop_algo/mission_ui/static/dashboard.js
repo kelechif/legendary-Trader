@@ -113,6 +113,17 @@
       exec.size == null ? "—" : fmtNum(exec.size, 3)
     );
 
+    const riskOffTile =
+      dash.risk_off ??
+      (exec.risk_off
+        ? exec.risk_off.active || exec.blocked
+          ? `ACTIVE (${exec.block_reason || exec.risk_off.reason || "risk_off"})`
+          : exec.risk_off.enabled === false
+            ? "off"
+            : "normal"
+        : null);
+    setMetric("risk_off", riskOffTile ?? "—", !riskOffTile);
+
     const autonomy = payload.autonomy || {};
     const autonomyMode =
       dash.autonomy_mode ?? autonomy.global_mode ?? null;

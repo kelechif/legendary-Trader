@@ -21,6 +21,28 @@ def _simulation_status(simulation):
     return "active"
 
 
+def _risk_off_status(snapshot):
+    risk = snapshot.get("risk") if isinstance(snapshot.get("risk"), dict) else {}
+    execution = (
+        snapshot.get("execution")
+        if isinstance(snapshot.get("execution"), dict)
+        else {}
+    )
+    off = execution.get("risk_off") or risk.get("risk_off") or {}
+    if not isinstance(off, dict):
+        return None
+    if off.get("enabled") is False:
+        return "off"
+    if off.get("active") or execution.get("blocked"):
+        reason = (
+            execution.get("block_reason")
+            or off.get("reason")
+            or "risk_off"
+        )
+        return f"ACTIVE ({reason})"
+    return "normal"
+
+
 def build_dashboard(snapshot):
     market = snapshot.get("market") or {}
     account = market.get("ACC1") or (next(iter(market.values())) if market else {})
@@ -36,4 +58,5 @@ def build_dashboard(snapshot):
         "autonomy_mode": (autonomy or {}).get("global_mode"),
         "marl_status": _marl_status(snapshot.get("marl")),
         "simulation_status": _simulation_status(snapshot.get("simulation")),
+        "risk_off": _risk_off_status(snapshot),
     }

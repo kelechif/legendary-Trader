@@ -14,6 +14,8 @@ x-prop-algo-service: &prop_algo_service
     PYTHONUNBUFFERED: "1"
     # Live MT5/cTrader are host-oriented; keep mock in Docker/compose.
     BROKER_ADAPTER: mock
+    # Drawdown / SAFE_MODE gate (mock equity ±50 stays below trip → tradeable).
+    RISK_OFF_ENABLED: "1"
   depends_on:
     redis:
       condition: service_healthy

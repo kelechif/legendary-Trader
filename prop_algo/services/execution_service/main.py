@@ -14,6 +14,7 @@ from infra.metrics import Metrics
 from infra.stream import Stream
 from neural_execution import NeuralExecutionEngine
 from trading.execution.execution_optimizer import ExecutionOptimizer
+from trading.risk_off import RiskOffEngine, execution_gate, merge_risk_factors
 
 
 def _mean_budget(budgets) -> float:
@@ -64,16 +65,32 @@ def main():
         f" backend={getattr(neural_engine, 'backend', 'disabled')}",
         flush=True,
     )
+    print(
+        f"execution_service risk_off="
+        f"{'on' if RiskOffEngine.enabled() else 'off'}",
+        flush=True,
+    )
 
     while True:
         signals = bus.consume("strategy_signal_stream", "exec_group", "exec_consumer")
         risk = bus.consume("risk_stream", "exec_group", "exec_consumer")
         gov = bus.consume("governance_stream", "exec_group", "exec_consumer")
+        unified = bus.consume("unified_core_stream", "exec_group", "exec_consumer")
 
         if not signals or not risk or not gov:
             continue
 
-        risk_factors = risk["budgets"]
+        risk_off = (risk or {}).get("risk_off") or {}
+        rules = (gov or {}).get("rules") or {}
+        gov_mode = str(rules.get("execution_mode", ""))
+        unified_mode = str((unified or {}).get("mode") or "")
+
+        blocked, gate_reason = execution_gate(
+            risk_off,
+            unified_mode=unified_mode or None,
+            gov_mode=gov_mode or None,
+        )
+
         advice = {
             "route": "MARKET",
             "slippage": 0.0005,
@@ -81,7 +98,7 @@ def main():
             "size": 0.1,
             "backend": "disabled",
         }
-        if neural_engine is not None:
+        if neural_engine is not None and not blocked:
             try:
                 m_f, r_f, g_f = _feature_vectors(signals, risk, gov)
                 advice = neural_engine.run(m_f, r_f, g_f)
@@ -97,20 +114,26 @@ def main():
                 }
 
         # Governance LIMIT_ONLY overrides neural MARKET preference.
-        rules = (gov or {}).get("rules") or {}
         if str(rules.get("execution_mode", "")).upper() == "LIMIT_ONLY":
             advice["route"] = "LIMIT"
 
-        t0 = time.perf_counter()
-        orders = exec_engine.run(
-            signals,
-            risk_factors,
-            size=advice.get("size", 0.1),
-            route=advice.get("route", "MARKET"),
-        )
-        latency_value = time.perf_counter() - t0
+        risk_factors = merge_risk_factors(risk.get("budgets"), risk_off)
+        if blocked:
+            advice["size"] = 0.0
+            orders = []
+            latency_value = 0.0
+        else:
+            t0 = time.perf_counter()
+            orders = exec_engine.run(
+                signals,
+                risk_factors,
+                size=advice.get("size", 0.1),
+                route=advice.get("route", "MARKET"),
+            )
+            latency_value = time.perf_counter() - t0
         metrics.exec_latency.set(latency_value)
 
+        off_active = bool(blocked or risk_off.get("active"))
         payload = {
             "route": advice.get("route", "MARKET"),
             "slippage": float(advice.get("slippage", 0.0005)),
@@ -119,6 +142,16 @@ def main():
             "backend": advice.get("backend", "disabled"),
             "neural_enabled": bool(neural_on),
             "orders": orders,
+            "risk_off": {
+                "enabled": bool(risk_off.get("enabled", RiskOffEngine.enabled())),
+                "active": off_active,
+                "reason": gate_reason
+                if off_active
+                else str(risk_off.get("reason") or "normal"),
+                "factors": risk_factors,
+            },
+            "blocked": bool(blocked),
+            "block_reason": gate_reason if blocked else None,
         }
         bus.publish("execution_stream", payload)
 
