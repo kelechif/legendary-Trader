@@ -17,6 +17,7 @@ data:
   PYTHONPATH: /app
   PYTHONUNBUFFERED: "1"
   BROKER_ADAPTER: mock
+  NEURAL_EXECUTION: "1"
 ---
 # --- market_data_service (metrics :8000) ---
 apiVersion: apps/v1

@@ -111,6 +111,10 @@ services:
 
   execution_service:
     <<: *prop_algo_service
+    environment:
+      <<: *prop_algo_env
+      # Optional neural / heuristic execution advice (torch-free by default).
+      NEURAL_EXECUTION: "1"
     command: ["python", "-m", "services.execution_service.main"]
     ports:
       - "8002:8002"
