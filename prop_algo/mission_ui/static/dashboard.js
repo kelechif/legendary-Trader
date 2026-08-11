@@ -23,11 +23,44 @@
   let msgCount = 0;
   let controlBusy = false;
   let lastControl = null;
+  let lastPayload = null;
 
   function setStatus(text, state) {
     if (!statusEl) return;
     statusEl.textContent = text;
     statusEl.dataset.state = state || "bad";
+  }
+
+  function modeFromControl(ctrl) {
+    if (!ctrl) return null;
+    if (ctrl.trading_halt) return "HALT";
+    if (ctrl.force_safe) return "SAFE_MODE";
+    return null;
+  }
+
+  function setModeBadge(mode) {
+    if (!modeEl) return;
+    const text = mode == null || mode === "" ? "—" : String(mode);
+    modeEl.textContent = text;
+    modeEl.dataset.mode = text === "—" ? "" : text;
+  }
+
+  function refreshModeBadge() {
+    const override = modeFromControl(lastControl);
+    if (override) {
+      setModeBadge(override);
+      return;
+    }
+    if (!lastPayload) return;
+    const dash = lastPayload.dashboard || {};
+    // Prefer stream-derived mode so Clear SAFE/halt updates the badge
+    // before the next mission_stream republish.
+    setModeBadge(
+      lastPayload.stream_global_mode ||
+        lastPayload.global_mode ||
+        dash.risk_mode ||
+        "—"
+    );
   }
 
   function controlSummary(ctrl) {
@@ -58,6 +91,7 @@
     if (btnResume) btnResume.disabled = controlBusy || !(ctrl && ctrl.autopilot_paused);
     if (btnSafe) btnSafe.disabled = controlBusy || !!(ctrl && ctrl.force_safe);
     if (btnClearSafe) btnClearSafe.disabled = controlBusy || !(ctrl && ctrl.force_safe);
+    refreshModeBadge();
   }
 
   async function fetchControl() {
@@ -161,14 +195,13 @@
 
   function renderPayload(payload) {
     msgCount += 1;
+    lastPayload = payload;
     const dash = payload.dashboard || {};
     const exec = payload.execution || {};
     const alerts = Array.isArray(payload.alerts) ? payload.alerts : [];
     const actions = Array.isArray(payload.actions) ? payload.actions : [];
-    const mode = payload.global_mode || dash.risk_mode || "—";
-
-    modeEl.textContent = mode;
-    modeEl.dataset.mode = String(mode);
+    // Mode badge: control API overrides (Force SAFE / halt) win over stream.
+    refreshModeBadge();
 
     const anomalies = dash.anomalies;
     const anomalyCount = Array.isArray(anomalies)

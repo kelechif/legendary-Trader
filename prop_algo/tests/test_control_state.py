@@ -11,6 +11,7 @@ from unittest import mock
 from prop_algo.mission_control.control_state import (
     control_blocks_autopilot,
     get_control_state,
+    mode_override_from_control,
     pause_autopilot,
     resume_autopilot,
     set_control_state,
@@ -96,6 +97,34 @@ class TestControlState(unittest.TestCase):
         self.assertTrue(state["trading_halt"])
         self.assertFalse(state["force_safe"])
         self.assertNotIn("ignored", state)
+
+    def test_mode_override_from_control_precedence(self):
+        mode, reason = mode_override_from_control({})
+        self.assertIsNone(mode)
+        self.assertIsNone(reason)
+
+        mode, reason = mode_override_from_control(
+            {"autopilot_paused": True, "trading_halt": False, "force_safe": False}
+        )
+        self.assertIsNone(mode)
+        self.assertIsNone(reason)
+
+        mode, reason = mode_override_from_control(
+            {"autopilot_paused": False, "trading_halt": False, "force_safe": True}
+        )
+        self.assertEqual(mode, "SAFE_MODE")
+        self.assertEqual(reason, "force_safe")
+
+        mode, reason = mode_override_from_control(
+            {"autopilot_paused": False, "trading_halt": True, "force_safe": True}
+        )
+        self.assertEqual(mode, "HALT")
+        self.assertEqual(reason, "trading_halt")
+
+        set_force_safe(True, path=self.path)
+        mode, reason = mode_override_from_control(path=self.path)
+        self.assertEqual(mode, "SAFE_MODE")
+        self.assertEqual(reason, "force_safe")
 
 
 class TestAutopilotControlGate(unittest.TestCase):

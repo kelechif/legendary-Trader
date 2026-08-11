@@ -161,3 +161,25 @@ def control_blocks_autopilot(state: Mapping[str, Any] | None = None) -> tuple[bo
     if s.get("force_safe"):
         return True, "SAFE_MODE"
     return False, "normal"
+
+
+def mode_override_from_control(
+    state: Mapping[str, Any] | None = None,
+    *,
+    redis_client=None,
+    path: Path | None = None,
+) -> tuple[str | None, str | None]:
+    """Return ``(mode, reason)`` when operator control overrides stream mode.
+
+    Precedence: ``trading_halt`` → ``HALT``, ``force_safe`` → ``SAFE_MODE``,
+    otherwise ``(None, None)`` so callers keep the stream-derived mode.
+    """
+    if state is None:
+        s = get_control_state(redis_client=redis_client, path=path)
+    else:
+        s = _normalize(state)
+    if s.get("trading_halt"):
+        return "HALT", "trading_halt"
+    if s.get("force_safe"):
+        return "SAFE_MODE", "force_safe"
+    return None, None

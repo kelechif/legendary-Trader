@@ -3,6 +3,7 @@ try:
 except ImportError:  # package import as prop_algo.* (pytest / non-Docker)
     from prop_algo.infra.modes import NORMAL, SAFE_MODE
 
+from .control_state import get_control_state, mode_override_from_control
 from .telemetry_bus import TelemetryBus
 from .mission_state import MissionState
 from .mission_alerts import generate_alerts
@@ -15,7 +16,7 @@ class MissionControlEngine:
         self.bus = TelemetryBus()
         self.state = MissionState()
 
-    def run(self, probes):
+    def run(self, probes, control=None):
         for key, value in probes.items():
             self.bus.push(key, value)
 
@@ -24,15 +25,29 @@ class MissionControlEngine:
         alerts = generate_alerts(snapshot)
         actions = apply_mission_actions(alerts)
 
+        stream_mode = SAFE_MODE if "System instability" in alerts else NORMAL
+        ctrl = control if control is not None else get_control_state()
+        override_mode, override_reason = mode_override_from_control(ctrl)
+        if override_mode:
+            global_mode = override_mode
+            mode_reason = override_reason
+        else:
+            global_mode = stream_mode
+            mode_reason = (
+                "system_instability" if stream_mode == SAFE_MODE else "normal"
+            )
+
         self.state.state["last_snapshot"] = dashboard
         self.state.state["alerts"] = alerts
-        self.state.state["global_mode"] = (
-            SAFE_MODE if "System instability" in alerts else NORMAL
-        )
+        self.state.state["global_mode"] = global_mode
+        self.state.state["global_mode_reason"] = mode_reason
+        self.state.state["stream_global_mode"] = stream_mode
 
         return {
             "dashboard": dashboard,
             "alerts": alerts,
             "actions": actions,
-            "global_mode": self.state.state["global_mode"]
+            "global_mode": global_mode,
+            "global_mode_reason": mode_reason,
+            "stream_global_mode": stream_mode,
         }
