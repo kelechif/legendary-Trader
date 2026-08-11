@@ -59,6 +59,7 @@ docker compose down
 - `MARL_LOOP_SLEEP` (default `2`) — seconds to sleep after each `marl_service` train step so hot `mission_stream` / `autonomy_stream` traffic does not peg CPU; set in `docker-compose.torch.yml`. Optional: `MARL_TORCH_THREADS` (default `1`).
 - `BROKER_ADAPTER=mock` (compose/k8s default) — see Brokers below.
 - `NEURAL_EXECUTION=1|0` (compose default `1` on `execution_service`) — optional neural/heuristic execution advice. When enabled, `execution_service` publishes `route` / `slippage` / `volatility` / `size` on `execution_stream` (Mission UI exec tiles). Works without torch via heuristics; set `NEURAL_MODEL_DIR` to load `route.pt` / `slippage.pt` / `volatility.pt` / `sizing.pt` when torch is available. Set `0` to disable.
+- `RISK_OFF_ENABLED=1|0` (compose/k8s default `1`) — `risk_service` evaluates `RiskOffEngine` from account equity/balance and publishes `risk_off` on `risk_stream`. `execution_service` zeros size / skips orders when risk-off is active or unified mode is `SAFE_MODE`, and publishes `risk_off` / `blocked` / `block_reason` on `execution_stream` (Mission UI **Risk-off** tile + alert). Mock equity wobble (±50) stays above the −100 drawdown trip, so the stack remains tradeable unless SAFE_MODE or a real drawdown hits. Set `0` to disable the gate.
 - Image `PYTHONPATH=/app` so `core`, `infra`, `trading`, `risk`, `learning`, `services`, `mission_ui`, `autonomy`, `neural_execution`, and `agents` imports resolve.
 
 ### UI

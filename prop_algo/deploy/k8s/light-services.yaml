@@ -18,6 +18,7 @@ data:
   PYTHONUNBUFFERED: "1"
   BROKER_ADAPTER: mock
   NEURAL_EXECUTION: "1"
+  RISK_OFF_ENABLED: "1"
 ---
 # --- market_data_service (metrics :8000) ---
 apiVersion: apps/v1

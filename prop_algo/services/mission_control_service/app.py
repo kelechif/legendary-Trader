@@ -54,6 +54,13 @@ def _normalize_execution(execution: Any) -> dict:
             out["backend"] = execution.get("backend")
         if "neural_enabled" in execution:
             out["neural_enabled"] = bool(execution.get("neural_enabled"))
+        if "blocked" in execution:
+            out["blocked"] = bool(execution.get("blocked"))
+        if execution.get("block_reason") is not None:
+            out["block_reason"] = execution.get("block_reason")
+        risk_off = execution.get("risk_off")
+        if isinstance(risk_off, dict):
+            out["risk_off"] = risk_off
         return out
     return dict(_DEFAULT_EXECUTION)
 
