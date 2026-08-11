@@ -1,0 +1,198 @@
+# First deploy path: Redis + Phase 1–2 core services (no torch/MARL).
+# From this directory: docker compose up --build
+
+name: prop_algo
+
+x-prop-algo-service: &prop_algo_service
+  build:
+    context: ../..
+    dockerfile: prop_algo/deploy/Dockerfile
+  environment: &prop_algo_env
+    REDIS_HOST: redis
+    REDIS_PORT: "6379"
+    PYTHONPATH: /app
+    PYTHONUNBUFFERED: "1"
+    # Live MT5/cTrader are host-oriented; keep mock in Docker/compose.
+    BROKER_ADAPTER: mock
+  depends_on:
+    redis:
+      condition: service_healthy
+  restart: unless-stopped
+
+# Process-alive + Redis reachability (no HTTP surface).
+x-redis-ping-healthcheck: &redis_ping_healthcheck
+  test:
+    [
+      "CMD",
+      "python",
+      "-c",
+      "import redis; redis.Redis(host='redis', port=6379, socket_connect_timeout=2).ping()",
+    ]
+  interval: 15s
+  timeout: 5s
+  retries: 5
+  start_period: 20s
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  market_data_service:
+    <<: *prop_algo_service
+    command: ["python", "-m", "services.market_data_service.main"]
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/metrics', timeout=3)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 25s
+
+  strategy_service:
+    <<: *prop_algo_service
+    command: ["python", "-m", "services.strategy_service.main"]
+    healthcheck: *redis_ping_healthcheck
+
+  risk_service:
+    <<: *prop_algo_service
+    command: ["python", "-m", "services.risk_service.main"]
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/metrics', timeout=3)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 25s
+
+  governance_service:
+    <<: *prop_algo_service
+    command: ["python", "-m", "services.governance_service.main"]
+    healthcheck: *redis_ping_healthcheck
+
+  unified_core_service:
+    <<: *prop_algo_service
+    command: ["python", "-m", "services.unified_core_service.main"]
+    ports:
+      - "8004:8004"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8004/metrics', timeout=3)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  execution_service:
+    <<: *prop_algo_service
+    command: ["python", "-m", "services.execution_service.main"]
+    ports:
+      - "8002:8002"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/metrics', timeout=3)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 25s
+
+  learning_service:
+    <<: *prop_algo_service
+    environment:
+      <<: *prop_algo_env
+      # Cap CPU: sleep between learning cycles (see services.learning_service.main).
+      LEARNING_LOOP_SLEEP: "2"
+      LEARNING_NUM_NEW: "1"
+    command: ["python", "-m", "services.learning_service.main"]
+    ports:
+      - "8003:8003"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8003/metrics', timeout=3)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  mission_control_service:
+    <<: *prop_algo_service
+    command: ["python", "-m", "services.mission_control_service.main"]
+    healthcheck: *redis_ping_healthcheck
+
+  # Torch-free autonomy path (consumes mission_stream)
+  autonomy_service:
+    <<: *prop_algo_service
+    command: ["python", "-m", "services.autonomy_service.main"]
+    healthcheck: *redis_ping_healthcheck
+
+  multi_agent_service:
+    <<: *prop_algo_service
+    command: ["python", "-m", "services.multi_agent_service.main"]
+    healthcheck: *redis_ping_healthcheck
+
+  mission_ui:
+    <<: *prop_algo_service
+    command:
+      [
+        "uvicorn",
+        "mission_ui.app:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8080",
+      ]
+    ports:
+      - "8080:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+      mission_control_service:
+        condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/', timeout=3)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s

@@ -1,0 +1,24 @@
+# Optional: Prometheus Operator CR. Requires prometheus-operator CRDs.
+# Skip this file if you do not have the operator installed.
+# Light-path metrics Services are labeled app=prop-service with port name "metrics".
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  name: prop-prometheus
+  namespace: prop-algo
+  labels:
+    app: prop-prometheus
+spec:
+  replicas: 1
+  serviceAccountName: default
+  serviceMonitorSelector:
+    matchLabels:
+      team: prop
+  serviceMonitorNamespaceSelector:
+    matchNames:
+      - prop-algo
+  resources:
+    requests:
+      memory: 256Mi
+    limits:
+      memory: 1Gi

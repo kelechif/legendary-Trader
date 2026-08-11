@@ -1,0 +1,16 @@
+{
+    "best_params": {
+        "lookback": 32,
+        "threshold": 0.005877453011677367
+    },
+    "history": [
+        {
+            "id": "strat_0_0",
+            "fitness": 0.0,
+            "params": {
+                "lookback": 32,
+                "threshold": 0.005877453011677367
+            }
+        }
+    ]
+}
