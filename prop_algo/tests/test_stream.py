@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import redis
 
-from prop_algo.infra.stream import Stream, _decode, _encode
+from prop_algo.infra.stream import Stream, _decode, _encode, _stream_maxlen
 
 
 class TestStreamCodec(unittest.TestCase):
@@ -79,14 +79,57 @@ class TestStreamIO(unittest.TestCase):
     def test_publish_xadd_encoded_json(self):
         fake_redis = MagicMock()
         with patch("prop_algo.infra.stream.redis.Redis", return_value=fake_redis):
-            stream = Stream(host="localhost", port=6379)
-            stream.publish("signals", {"side": "BUY"})
+            with patch.dict(os.environ, {"STREAM_MAXLEN": "10000"}, clear=False):
+                stream = Stream(host="localhost", port=6379)
+                stream.publish("signals", {"side": "BUY"})
 
         fake_redis.xadd.assert_called_once()
-        args, _ = fake_redis.xadd.call_args
+        args, kwargs = fake_redis.xadd.call_args
         self.assertEqual(args[0], "signals")
         body = json.loads(args[1]["data"])
         self.assertEqual(body["side"], "BUY")
+        self.assertEqual(kwargs.get("maxlen"), 10000)
+        self.assertTrue(kwargs.get("approximate"))
+
+    def test_publish_passes_maxlen_from_env(self):
+        fake_redis = MagicMock()
+        with patch("prop_algo.infra.stream.redis.Redis", return_value=fake_redis):
+            with patch.dict(os.environ, {"STREAM_MAXLEN": "2500"}, clear=False):
+                stream = Stream(host="localhost", port=6379)
+                stream.publish("market_data_stream", {"ok": 1})
+
+        _, kwargs = fake_redis.xadd.call_args
+        self.assertEqual(kwargs["maxlen"], 2500)
+        self.assertTrue(kwargs["approximate"])
+
+    def test_publish_per_stream_maxlen_override(self):
+        fake_redis = MagicMock()
+        env = {
+            "STREAM_MAXLEN": "10000",
+            "STREAM_MAXLEN_MARKET_DATA_STREAM": "500",
+        }
+        with patch("prop_algo.infra.stream.redis.Redis", return_value=fake_redis):
+            with patch.dict(os.environ, env, clear=False):
+                stream = Stream(host="localhost", port=6379)
+                stream.publish("market_data_stream", {"ok": 1})
+
+        self.assertEqual(fake_redis.xadd.call_args.kwargs["maxlen"], 500)
+
+    def test_publish_maxlen_zero_disables_trim(self):
+        fake_redis = MagicMock()
+        with patch("prop_algo.infra.stream.redis.Redis", return_value=fake_redis):
+            with patch.dict(os.environ, {"STREAM_MAXLEN": "0"}, clear=False):
+                stream = Stream(host="localhost", port=6379)
+                stream.publish("signals", {"side": "BUY"})
+
+        _, kwargs = fake_redis.xadd.call_args
+        self.assertNotIn("maxlen", kwargs)
+
+    def test_stream_maxlen_default(self):
+        with patch.dict(os.environ):
+            os.environ.pop("STREAM_MAXLEN", None)
+            os.environ.pop("STREAM_MAXLEN_FOO", None)
+            self.assertEqual(_stream_maxlen("foo"), 10000)
 
 
 if __name__ == "__main__":

@@ -10,6 +10,8 @@ x-prop-algo-service: &prop_algo_service
   environment: &prop_algo_env
     REDIS_HOST: redis
     REDIS_PORT: "6379"
+    # Cap Redis stream growth on XADD (approximate MAXLEN ~).
+    STREAM_MAXLEN: "10000"
     PYTHONPATH: /app
     PYTHONUNBUFFERED: "1"
     # Live MT5/cTrader are host-oriented; keep mock in Docker/compose.
