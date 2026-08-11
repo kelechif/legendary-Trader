@@ -91,6 +91,67 @@ class TestMissionDashboard(unittest.TestCase):
         self.assertEqual(generate_alerts(_base_snapshot()), [])
         self.assertEqual(apply_mission_actions([]), [])
 
+    def test_autopilot_dashboard_and_alerts(self):
+        running = _base_snapshot(
+            execution={
+                "route": "MARKET",
+                "slippage": 0.0005,
+                "volatility": 0.001,
+                "size": 0.1,
+                "autopilot": {
+                    "enabled": True,
+                    "paused": False,
+                    "allow": True,
+                    "state": "running",
+                    "reason": "normal",
+                },
+            }
+        )
+        self.assertEqual(build_dashboard(running)["autopilot"], "running")
+        self.assertEqual(generate_alerts(running), [])
+
+        paused = _base_snapshot(
+            execution={
+                "route": "MARKET",
+                "slippage": 0.0005,
+                "volatility": 0.001,
+                "size": 0.0,
+                "blocked": True,
+                "block_reason": "autopilot_paused",
+                "autopilot": {
+                    "enabled": True,
+                    "paused": True,
+                    "allow": False,
+                    "state": "paused",
+                    "reason": "paused",
+                },
+            }
+        )
+        self.assertEqual(build_dashboard(paused)["autopilot"], "paused (paused)")
+        self.assertEqual(build_dashboard(paused)["risk_off"], "normal")
+        self.assertIn("Autopilot paused: paused", generate_alerts(paused))
+
+        off = _base_snapshot(
+            execution={
+                "route": "MARKET",
+                "slippage": 0.0005,
+                "volatility": 0.001,
+                "size": 0.0,
+                "blocked": True,
+                "block_reason": "autopilot_off",
+                "autopilot": {
+                    "enabled": False,
+                    "paused": False,
+                    "allow": False,
+                    "state": "off",
+                    "reason": "disabled",
+                },
+            }
+        )
+        self.assertEqual(build_dashboard(off)["autopilot"], "off")
+        self.assertIn("Autopilot off", generate_alerts(off))
+
 
 if __name__ == "__main__":
     unittest.main()
+

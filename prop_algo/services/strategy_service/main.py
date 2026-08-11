@@ -10,6 +10,7 @@ for _p in (_ROOT, _PROP_ALGO):
 from core.adapters.mock_adapter import MockAdapter
 from core.registry.registry import Registry
 from infra.stream import Stream
+from trading.autopilot import AutopilotEngine
 from trading.strategies.engine import StrategyEngine
 
 
@@ -19,6 +20,13 @@ def main():
     registry.register_account("ACC2", MockAdapter("ACC2"))
     engine = StrategyEngine(registry)
     bus = Stream()
+    # Autopilot gates new orders in execution_service; strategy still publishes.
+    print(
+        f"strategy_service autopilot="
+        f"{'on' if AutopilotEngine.enabled() else 'off'}"
+        f" (orders gated in execution_service)",
+        flush=True,
+    )
 
     while True:
         data = bus.consume("market_data_stream", "strategy_group", "strategy_consumer")

@@ -17,14 +17,18 @@ def generate_alerts(snapshot):
         else {}
     )
     risk_off = execution.get("risk_off") or risk.get("risk_off") or {}
-    if isinstance(risk_off, dict) and (
-        risk_off.get("active") or execution.get("blocked")
-    ):
-        reason = (
-            execution.get("block_reason")
-            or risk_off.get("reason")
-            or "risk_off"
+    block_reason = str(execution.get("block_reason") or "")
+    risk_blocked = isinstance(risk_off, dict) and (
+        risk_off.get("active")
+        or (
+            execution.get("blocked")
+            and block_reason
+            not in ("autopilot_off", "autopilot_paused")
+            and not block_reason.startswith("autopilot")
         )
+    )
+    if risk_blocked:
+        reason = block_reason or risk_off.get("reason") or "risk_off"
         alerts.append(f"Risk-off active: {reason}")
     else:
         unified = (
@@ -34,5 +38,14 @@ def generate_alerts(snapshot):
         )
         if str(unified.get("mode") or "").upper() == "SAFE_MODE":
             alerts.append("Risk-off active: SAFE_MODE")
+
+    autopilot = execution.get("autopilot") or {}
+    if isinstance(autopilot, dict) and autopilot:
+        if autopilot.get("enabled") is False or autopilot.get("state") == "off":
+            alerts.append("Autopilot off")
+        elif autopilot.get("paused") or autopilot.get("allow") is False:
+            alerts.append(
+                f"Autopilot paused: {autopilot.get('reason') or 'paused'}"
+            )
 
     return alerts

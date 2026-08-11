@@ -40,7 +40,15 @@ class TestExecution(unittest.TestCase):
         self.assertTrue(all(row["status"] == "FILLED" for row in results))
 
     def test_autopilot_should_trade(self):
-        self.assertTrue(AutopilotEngine().should_trade())
+        import os
+        from unittest import mock
+
+        with mock.patch.dict(
+            os.environ,
+            {"AUTOPILOT_ENABLED": "1", "AUTOPILOT_PAUSED": "0"},
+            clear=False,
+        ):
+            self.assertTrue(AutopilotEngine().should_trade())
 
 
 if __name__ == "__main__":

@@ -124,6 +124,18 @@
         : null);
     setMetric("risk_off", riskOffTile ?? "—", !riskOffTile);
 
+    const ap = exec.autopilot;
+    const autopilotTile =
+      dash.autopilot ??
+      (ap
+        ? ap.enabled === false || ap.state === "off"
+          ? "off"
+          : ap.paused || ap.allow === false
+            ? `paused (${ap.reason || "paused"})`
+            : "running"
+        : null);
+    setMetric("autopilot", autopilotTile ?? "—", !autopilotTile);
+
     const autonomy = payload.autonomy || {};
     const autonomyMode =
       dash.autonomy_mode ?? autonomy.global_mode ?? null;

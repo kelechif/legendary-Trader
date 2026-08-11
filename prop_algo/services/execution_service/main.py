@@ -13,6 +13,8 @@ from core.registry.registry import Registry
 from infra.metrics import Metrics
 from infra.stream import Stream
 from neural_execution import NeuralExecutionEngine
+from trading.autopilot import AutopilotEngine
+from trading.autopilot import execution_gate as autopilot_gate
 from trading.execution.execution_optimizer import ExecutionOptimizer
 from trading.risk_off import RiskOffEngine, execution_gate, merge_risk_factors
 
@@ -49,6 +51,15 @@ def _feature_vectors(signals, risk, gov):
     return market_features, risk_features, gov_features
 
 
+def _combine_blocks(risk_blocked, risk_reason, ap_blocked, ap_reason):
+    """Prefer risk-off / gov reasons; fall back to autopilot."""
+    if risk_blocked:
+        return True, risk_reason
+    if ap_blocked:
+        return True, ap_reason
+    return False, "normal"
+
+
 def main():
     registry = Registry()
     kind = register_broker_accounts(registry)
@@ -56,6 +67,7 @@ def main():
     exec_engine = ExecutionOptimizer(registry)
     bus = Stream()
     metrics = Metrics(8002)
+    autopilot_engine = AutopilotEngine()
 
     neural_on = NeuralExecutionEngine.enabled()
     neural_engine = NeuralExecutionEngine.build() if neural_on else None
@@ -68,6 +80,12 @@ def main():
     print(
         f"execution_service risk_off="
         f"{'on' if RiskOffEngine.enabled() else 'off'}",
+        flush=True,
+    )
+    print(
+        f"execution_service autopilot="
+        f"{'on' if AutopilotEngine.enabled() else 'off'}"
+        f"{' paused' if AutopilotEngine.env_paused() else ''}",
         flush=True,
     )
 
@@ -85,10 +103,20 @@ def main():
         gov_mode = str(rules.get("execution_mode", ""))
         unified_mode = str((unified or {}).get("mode") or "")
 
-        blocked, gate_reason = execution_gate(
+        autopilot = autopilot_engine.evaluate(
             risk_off,
             unified_mode=unified_mode or None,
             gov_mode=gov_mode or None,
+        )
+        ap_blocked, ap_reason = autopilot_gate(autopilot)
+
+        risk_blocked, risk_reason = execution_gate(
+            risk_off,
+            unified_mode=unified_mode or None,
+            gov_mode=gov_mode or None,
+        )
+        blocked, gate_reason = _combine_blocks(
+            risk_blocked, risk_reason, ap_blocked, ap_reason
         )
 
         advice = {
@@ -133,7 +161,7 @@ def main():
             latency_value = time.perf_counter() - t0
         metrics.exec_latency.set(latency_value)
 
-        off_active = bool(blocked or risk_off.get("active"))
+        off_active = bool(risk_blocked or risk_off.get("active"))
         payload = {
             "route": advice.get("route", "MARKET"),
             "slippage": float(advice.get("slippage", 0.0005)),
@@ -145,11 +173,12 @@ def main():
             "risk_off": {
                 "enabled": bool(risk_off.get("enabled", RiskOffEngine.enabled())),
                 "active": off_active,
-                "reason": gate_reason
+                "reason": risk_reason
                 if off_active
                 else str(risk_off.get("reason") or "normal"),
                 "factors": risk_factors,
             },
+            "autopilot": autopilot,
             "blocked": bool(blocked),
             "block_reason": gate_reason if blocked else None,
         }

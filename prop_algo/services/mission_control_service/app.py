@@ -61,6 +61,9 @@ def _normalize_execution(execution: Any) -> dict:
         risk_off = execution.get("risk_off")
         if isinstance(risk_off, dict):
             out["risk_off"] = risk_off
+        autopilot = execution.get("autopilot")
+        if isinstance(autopilot, dict):
+            out["autopilot"] = autopilot
         return out
     return dict(_DEFAULT_EXECUTION)
 

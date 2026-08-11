@@ -33,14 +33,37 @@ def _risk_off_status(snapshot):
         return None
     if off.get("enabled") is False:
         return "off"
-    if off.get("active") or execution.get("blocked"):
+    if off.get("active"):
         reason = (
             execution.get("block_reason")
             or off.get("reason")
             or "risk_off"
         )
         return f"ACTIVE ({reason})"
+    # Autopilot-only blocks must not paint the risk-off tile ACTIVE.
+    br = str(execution.get("block_reason") or "")
+    if execution.get("blocked") and br and br not in (
+        "autopilot_off",
+        "autopilot_paused",
+    ):
+        return f"ACTIVE ({br})"
     return "normal"
+
+
+def _autopilot_status(snapshot):
+    execution = (
+        snapshot.get("execution")
+        if isinstance(snapshot.get("execution"), dict)
+        else {}
+    )
+    ap = execution.get("autopilot") or {}
+    if not isinstance(ap, dict) or not ap:
+        return None
+    if ap.get("enabled") is False or ap.get("state") == "off":
+        return "off"
+    if ap.get("paused") or ap.get("allow") is False:
+        return f"paused ({ap.get('reason') or 'paused'})"
+    return "running"
 
 
 def build_dashboard(snapshot):
@@ -59,4 +82,5 @@ def build_dashboard(snapshot):
         "marl_status": _marl_status(snapshot.get("marl")),
         "simulation_status": _simulation_status(snapshot.get("simulation")),
         "risk_off": _risk_off_status(snapshot),
+        "autopilot": _autopilot_status(snapshot),
     }
