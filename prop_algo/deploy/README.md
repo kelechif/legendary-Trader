@@ -360,6 +360,32 @@ docker compose -f docker-compose.yml -f docker-compose.metrics.yml --profile met
 
 Each Deployment in `light-services.yaml` only differs by `command` (same pattern as compose). To add another process later: copy a Deployment block, change `metadata.name` / labels / `command`.
 
+## Week-long demo signal run (host MT5)
+
+For a multi-day DEMO MT5 signal loop on the Windows host (`demo_signal_week.py`), keep the PC from sleeping with `keep_awake.ps1`. It refreshes Win32 `SetThreadExecutionState` (`ES_CONTINUOUS | ES_SYSTEM_REQUIRED`; optional `-AwayMode`) about every 60s so sleep returns when the script stops. Do **not** change the power plan permanently; optional `-UsePowerCfg` only temporarily zeros AC sleep/monitor timeouts and restores them on exit.
+
+Start (with the week runner):
+
+```powershell
+# Keep PC awake (background)
+Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','prop_algo\deploy\keep_awake.ps1','-AwayMode' -WindowStyle Hidden
+
+# Week DEMO signal loop (background example)
+Start-Process py -ArgumentList '-3','prop_algo\deploy\demo_signal_week.py','--duration-days','7' -WindowStyle Hidden
+```
+
+Stop:
+
+```powershell
+# keep_awake
+Stop-Process -Id (Get-Content prop_algo\deploy\logs\keep_awake.pid) -Force
+
+# demo_signal_week
+Stop-Process -Id (Get-Content prop_algo\deploy\logs\demo_signal_week.pid) -Force
+```
+
+Logs/PIDs: `prop_algo/deploy/logs/keep_awake.log` + `keep_awake.pid`, `demo_signal_week.log` + `demo_signal_week.pid`.
+
 ## MARL / simulation (torch, optional overlay)
 
 `marl_service` and `simulation_service` import `torch` via `marl.*`. They are **not**

@@ -10,6 +10,7 @@ dist/
 # runtime artifacts
 models/*.joblib
 logs/*.log
+prop_algo/deploy/logs/
 data_cache/
 paper_account.json
 trade_log.csv
